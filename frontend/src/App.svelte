@@ -363,12 +363,12 @@
 	on:pause={onAudioPause}
 	on:playing={onAudioPlaying}
 	on:timeupdate={onAudioTimeUpdate}
-/>
+></audio>
 
 <main>
 	{#if ytdlpStatus === "preparing"}
 		<div class="banner">
-			<span class="spinner" />
+			<span class="spinner"></span>
 			<span>yt-dlp 준비 중… (최초 실행 시 다운로드)</span>
 		</div>
 	{/if}
@@ -392,7 +392,7 @@
 		/>
 		<button class="primary" on:click={addTrack} disabled={adding || !url.trim()}>
 			{#if adding}
-				<span class="spinner" />
+				<span class="spinner"></span>
 				조회중
 			{:else}
 				➕ 추가
@@ -403,7 +403,7 @@
 	<ul class="playlist">
 		{#each player.playlist as item, i (item.url)}
 			<!-- 키보드 조작은 전역 단축키(Space/←/→/Delete)로 처리 -->
-			<!-- svelte-ignore a11y-click-events-have-key-events -->
+			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 			<li
 				class:selected={i === selected}
 				class:current={i === player.currentIndex}
@@ -461,7 +461,7 @@
 
 	<div class="status">
 		<span class="badge {player.state}">
-			{#if isLoading}<span class="spinner" />{/if}
+			{#if isLoading}<span class="spinner"></span>{/if}
 			{statusText}
 		</span>
 		<span class="now" title={current?.title ?? ""}>{current ? current.title : "—"}</span>
