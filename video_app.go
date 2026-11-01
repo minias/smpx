@@ -113,6 +113,22 @@ func (v *VideoApp) Fit(width, height, innerW, innerH int) {
 	}
 }
 
+// ToggleFullscreen 전체 화면 전환 (Enter)
+func (v *VideoApp) ToggleFullscreen() {
+	if runtime.WindowIsFullscreen(v.ctx) {
+		runtime.WindowUnfullscreen(v.ctx)
+		return
+	}
+	runtime.WindowFullscreen(v.ctx)
+}
+
+// ExitFullscreen 전체 화면 해제 (Esc)
+func (v *VideoApp) ExitFullscreen() {
+	if runtime.WindowIsFullscreen(v.ctx) {
+		runtime.WindowUnfullscreen(v.ctx)
+	}
+}
+
 // Report 영상 창 → 메인 이벤트 전달
 func (v *VideoApp) Report(ev videoEvent) {
 	_ = v.ch.emit(ev)
