@@ -5,7 +5,7 @@ import "testing"
 
 func TestVideoID(t *testing.T) {
 	cases := map[string]string{
-		"https://www.youtube.com/watch?v=cFw7034Jvn0&list=PLx&index=34": "cFw7034Jvn0",
+		"https://www.youtube.com/watch?v=jNQXAC9IVRw&list=PLx&index=34": "jNQXAC9IVRw",
 		"https://youtu.be/jNQXAC9IVRw?si=abc":                           "jNQXAC9IVRw",
 		"https://m.youtube.com/watch?v=abc123":                          "abc123",
 		"https://music.youtube.com/watch?v=abc123":                      "abc123",
