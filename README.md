@@ -21,6 +21,9 @@ YouTube 링크를 플레이리스트에 추가하면 `yt-dlp` 로 오디오 스�
 | Ubuntu 22.04+ / Debian 12+ | `smpx_<버전>_linux_amd64.deb` | `sudo apt install ./smpx_<버전>_linux_amd64.deb` |
 | 기타 Linux | `smpx_<버전>_linux_amd64.tar.gz` | 압축 해제 후 `smpx` 실행 |
 
+> **macOS 최초 실행**: 공증되지 않은 앱이라 처음 한 번은 **시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기** 가 필요합니다.
+> (또는 터미널에서 `xattr -dr com.apple.quarantine /Applications/smpx.app`) 이후에는 바로 열립니다.
+
 릴리스 절차, macOS 서명 / 공증 설정은 [docs/RELEASE.md](docs/RELEASE.md) 참고.
 
 ---
