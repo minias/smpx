@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
 
 env:
-  WAILS_VERSION: v2.12.0
+  WAILS_VERSION: v2.17.0
 
 jobs:
   version:
@@ -51,10 +51,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -84,14 +84,15 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
           rm -f "$RUNNER_TEMP/cert.p12"
 
-          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep 'Developer ID Application' | head -1 | awk -F'"' '{print $2}')"
+          # Developer ID Application(유료, 서명 + 공증) 우선, 없으면 Apple Development(무료, 서명만)
+          IDENTITIES="$(security find-identity -v -p codesigning "$KEYCHAIN")"
+          IDENTITY="$(echo "$IDENTITIES" | grep 'Developer ID Application' | head -1 | awk -F'"' '{print $2}')"
           if [ -z "$IDENTITY" ]; then
-            # Apple Development 등 배포용이 아닌 인증서: 릴리스(태그)는 중단, PR 빌드는 서명 없이 계속
-            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-              echo "::error::Developer ID Application 인증서를 찾을 수 없습니다 (docs/RELEASE.md 참고)"
-              exit 1
-            fi
-            echo "::warning::Developer ID Application 인증서가 없어 서명 없이 빌드합니다 (docs/RELEASE.md 참고)"
+            IDENTITY="$(echo "$IDENTITIES" | grep 'Apple Development' | head -1 | awk -F'"' '{print $2}')"
+            [ -n "$IDENTITY" ] && echo "::notice::Apple Development 인증서로 서명합니다 (공증 없음 — 다른 Mac 에서는 최초 1회 '그래도 열기' 필요)"
+          fi
+          if [ -z "$IDENTITY" ]; then
+            echo "::warning::사용할 수 있는 서명 인증서가 없어 서명 없이 빌드합니다 (docs/RELEASE.md 참고)"
             exit 0
           fi
           echo "MACOS_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
@@ -100,7 +101,7 @@ jobs:
         run: scripts/package-macos.sh "${{ needs.version.outputs.version }}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos
           path: dist/*.dmg
@@ -114,10 +115,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -172,7 +173,7 @@ jobs:
           pkill -x smpx || true
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux
           path: |
@@ -190,7 +191,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
