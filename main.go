@@ -19,6 +19,14 @@ import (
 var assets embed.FS
 
 func main() {
+	if os.Getenv(videoWindowEnv) != "" {
+		if err := runVideoWindow(); err != nil {
+			fmt.Fprintln(os.Stderr, "영상 창 오류:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	repo, err := storage.NewPlaylistRepository()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "플레이리스트 저장소 초기화 실패:", err)

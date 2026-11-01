@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/minias/smpx/internal/application/youtube"
+	"github.com/minias/smpx/internal/domain"
 )
 
 // 스트림 URL 캐시 유효 시간
@@ -22,6 +23,9 @@ const stderrTailLines = 5
 // WebView(WKWebView / WebKitGTK) 재생용 오디오 형식
 // opus(webm) 우선: YouTube DASH m4a 는 WKWebView 에서 길이가 2배로 잡혀 곡 종료가 늦어짐
 const audioFormat = "bestaudio[acodec=opus]/bestaudio[ext=m4a]/bestaudio"
+
+// 화면 보기용: H.264 영상(최대 1080p) + opus 오디오, 없으면 소리 포함 단일 스트림
+const videoFormat = "bv*[vcodec^=avc1][height<=1080]+ba[acodec=opus]/bv*[vcodec^=avc1][height<=1080]+ba/b[vcodec^=avc1]/b"
 
 var _ youtube.Resolver = (*Client)(nil)
 
@@ -110,6 +114,51 @@ func (c *Client) StreamURL(ctx context.Context, url string) (string, error) {
 	})
 }
 
+// Streams 재생 스트림 (video=false 면 오디오만)
+func (c *Client) Streams(ctx context.Context, url string, video bool) (domain.Stream, error) {
+	if !video {
+		audio, err := c.StreamURL(ctx, url)
+		return domain.Stream{AudioURL: audio}, err
+	}
+
+	url, err := validateURL(url)
+	if err != nil {
+		return domain.Stream{}, err
+	}
+
+	key := "video\x00" + url
+	joined, ok := c.streams.get(key)
+	if !ok {
+		joined, err = c.flight.do(ctx, key, func() (string, error) {
+			if v, ok := c.streams.get(key); ok {
+				return v, nil
+			}
+			out, err := c.exec(ctx, "-f", videoFormat, "--no-playlist", "--no-warnings", "-g", "--", url)
+			if err != nil {
+				return "", err
+			}
+			lines := nonEmptyLines(out)
+			if len(lines) == 0 {
+				return "", errors.New("yt-dlp: empty stream url")
+			}
+			v := strings.Join(lines, "\n")
+			c.streams.set(key, v)
+			return v, nil
+		})
+		if err != nil {
+			return domain.Stream{}, err
+		}
+	}
+
+	// -g 출력 순서: 영상, 오디오 (단일 스트림이면 한 줄)
+	lines := strings.Split(joined, "\n")
+	st := domain.Stream{VideoURL: lines[0]}
+	if len(lines) > 1 {
+		st.AudioURL = lines[1]
+	}
+	return st, nil
+}
+
 // Title 영상 제목 조회 (비어 있으면 url 반환, 캐시 유지)
 func (c *Client) Title(ctx context.Context, url string) (string, error) {
 	url, err := validateURL(url)
@@ -186,10 +235,18 @@ func tailLines(s string, n int) string {
 
 // firstLine 비어 있지 않은 첫 줄
 func firstLine(b []byte) string {
-	for _, l := range strings.Split(string(b), "\n") {
-		if l = strings.TrimSpace(l); l != "" {
-			return l
-		}
+	if lines := nonEmptyLines(b); len(lines) > 0 {
+		return lines[0]
 	}
 	return ""
+}
+
+func nonEmptyLines(b []byte) []string {
+	var lines []string
+	for _, l := range strings.Split(string(b), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	return lines
 }

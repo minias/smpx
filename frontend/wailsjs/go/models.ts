@@ -25,6 +25,7 @@ export namespace service {
 	    state: string;
 	    loopMode: string;
 	    volume: number;
+	    showVideo: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new PlayerState(source);
@@ -37,6 +38,7 @@ export namespace service {
 	        this.state = source["state"];
 	        this.loopMode = source["loopMode"];
 	        this.volume = source["volume"];
+	        this.showVideo = source["showVideo"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

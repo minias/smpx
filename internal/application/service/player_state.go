@@ -10,6 +10,7 @@ type PlayerState struct {
 	State        domain.PlaybackState  `json:"state"`
 	LoopMode     domain.LoopMode       `json:"loopMode"`
 	Volume       int                   `json:"volume"`
+	ShowVideo    bool                  `json:"showVideo"`
 }
 
 func newPlayerState() PlayerState {
