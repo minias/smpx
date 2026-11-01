@@ -6,8 +6,9 @@
 # 사용법: scripts/package-macos.sh <버전>   (예: 0.2.0)
 #
 # 서명 / 공증은 환경변수가 있을 때만 수행 (없으면 서명 없는 DMG)
-#   MACOS_SIGN_IDENTITY  예: "Developer ID Application: minias lee (TEAMID)"
-#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD  (공증용, 앱 암호)
+#   MACOS_SIGN_IDENTITY  예: "Developer ID Application: <이름> (<TEAMID>)"  → 서명 + 공증
+#                            "Apple Development: <계정> (<TEAMID>)"          → 서명만 (무료 계정, 공증 불가)
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD  (공증용, Developer ID 일 때만 사용)
 
 set -euo pipefail
 
@@ -50,7 +51,9 @@ hdiutil create -volname "SMPX $VERSION" -srcfolder "$STAGE" -ov -format UDZO "$D
 if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
   codesign --force --timestamp --sign "$MACOS_SIGN_IDENTITY" "$DMG"
 
-  if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; then
+  if [[ "$MACOS_SIGN_IDENTITY" != "Developer ID Application"* ]]; then
+    echo "⚠ Developer ID 인증서가 아니므로 공증 생략 (다른 Mac 에서는 최초 1회 '그래도 열기' 필요)"
+  elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; then
     echo "▶ 공증 (notarytool)"
     xcrun notarytool submit "$DMG" \
       --apple-id "$APPLE_ID" \
