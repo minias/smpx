@@ -120,13 +120,6 @@ internal/
 
 ---
 
-## 작업 방식
-
-작업은 항상 `dev` 에서 새 브랜치를 만들어 진행하고, 메인 에이전트 검증 후 PR 로 `dev` 에 병합합니다 ([CONTRIBUTING.md](CONTRIBUTING.md)).
-최초 이식(`feature/smp-port`)은 메인 에이전트가 Domain / Application 계약을 고정한 뒤 서브 에이전트 5개가 병렬로 구현했습니다.
-
----
-
 ## 개발
 
 필요: Go 1.25+, Node.js, [Wails CLI](https://wails.io/docs/gettingstarted/installation) (yt-dlp 는 앱이 자동 설치)
