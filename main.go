@@ -69,6 +69,8 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
+		// macOS: 창을 닫으면 메뉴바로 숨김 (메뉴바 '종료' 또는 Cmd+Q 로 종료)
+		HideWindowOnClose: trayHidesWindowOnClose,
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId: "com.minias.smpx",
 			OnSecondInstanceLaunch: func(options.SecondInstanceData) {

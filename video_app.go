@@ -35,6 +35,9 @@ const (
 func (v *VideoApp) startup(ctx context.Context) {
 	v.ctx = ctx
 
+	// macOS: 영상 창은 Dock 아이콘 없이 (메인 앱 아이콘 하나만 표시)
+	setVideoWindowAccessory()
+
 	go func() {
 		v.ch.commands(v.forward)
 

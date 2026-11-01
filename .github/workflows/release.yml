@@ -142,6 +142,27 @@ jobs:
           sudo apt-get install -y ./dist/*.deb
           test -x /usr/bin/smpx
 
+      # 설치한 앱을 가상 화면에서 실행: 정상 기동 + yt-dlp 최초 자동 설치(다운로드 + SHA-256 검증) 확인
+      - name: Smoke test (xvfb)
+        run: |
+          sudo apt-get install -y xvfb
+          export HOME="$RUNNER_TEMP/home"
+          mkdir -p "$HOME"
+          export WEBKIT_DISABLE_COMPOSITING_MODE=1
+
+          dbus-run-session -- xvfb-run -a smpx > "$RUNNER_TEMP/smpx.log" 2>&1 &
+
+          YTDLP="$HOME/.config/smpx/bin/yt-dlp"
+          for i in $(seq 1 90); do
+            [ -x "$YTDLP" ] && break
+            sleep 2
+          done
+
+          cat "$RUNNER_TEMP/smpx.log"
+          pgrep -x smpx
+          "$YTDLP" --version
+          pkill -x smpx || true
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
