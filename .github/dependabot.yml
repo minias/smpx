@@ -19,10 +19,6 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "deps"
-    # svelte / vite 메이저 업그레이드는 코드 마이그레이션이 필요하므로 수동으로 진행
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

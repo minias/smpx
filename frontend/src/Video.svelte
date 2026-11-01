@@ -228,9 +228,10 @@
 <!-- 창이 포커스를 잃으면 keyup 이 오지 않으므로 보통 속도로 복귀 -->
 <svelte:window on:keydown={onKey} on:keyup={onKeyUp} on:blur={() => setRate(false)} />
 
-<!-- svelte-ignore a11y-media-has-caption -->
-<!-- svelte-ignore a11y-click-events-have-key-events -->
+<!-- 키보드 조작은 전역 단축키(Enter / Space / ← →)로 처리 -->
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="stage" on:click={toggle}>
+	<!-- svelte-ignore a11y_media_has_caption -->
 	<video
 		bind:this={video}
 		playsinline
@@ -246,7 +247,7 @@
 		}}
 		on:pause={onMasterPause}
 		on:loadedmetadata={() => window.go.main.VideoApp.Fit(video.videoWidth, video.videoHeight, window.innerWidth, window.innerHeight)}
-	/>
+	></video>
 	{#if message}<p class="msg">{message}</p>{/if}
 	{#if fast}<span class="rate">2×</span>{/if}
 </div>
@@ -259,7 +260,7 @@
 	on:timeupdate={onTimeUpdate}
 	on:playing={onMasterPlaying}
 	on:pause={onMasterPause}
-/>
+></audio>
 
 <style>
 	.stage {

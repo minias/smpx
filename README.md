@@ -33,7 +33,7 @@ See [docs/RELEASE.md](docs/RELEASE.md) for the release process and macOS signing
 
 | | SMP (original) | SMPX |
 |---|---|---|
-| Language / UI | C# .NET, WinForms | Go 1.26, Wails v2.17, Svelte 3 |
+| Language / UI | C# .NET, WinForms | Go 1.26, Wails v2.17, Svelte 5 |
 | Audio | NAudio (MediaFoundation) | WebView HTML5 `<audio>` (opus / m4a) |
 | Stream extraction | yt-dlp.exe (bundled) | yt-dlp (auto-installed on first launch + auto-updated) |
 | Media keys | Keyboard hook | MediaSession (macOS Now Playing, media keys, AirPods) |
