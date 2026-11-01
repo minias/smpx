@@ -1,0 +1,31 @@
+name: Dependency Submission
+# Go 의존성 그래프를 main push 마다 직접 제출 → Dependabot 알림이 실제 버전 기준으로 갱신되도록
+# (go.mod 정적 분석만으로는 그래프가 갱신되지 않는 경우가 있음)
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  go:
+    name: Go dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Submit Go dependencies
+        uses: actions/go-dependency-submission@v2
+        with:
+          go-mod-path: go.mod
+          go-build-target: ./...

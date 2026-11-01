@@ -27,7 +27,7 @@ SMPX 는 외부 프로그램 `yt-dlp` 를 내려받아 실행하므로, yt-dlp �
 
 | 영역 | 조치 |
 |---|---|
-| 의존성 | Dependabot 취약점 알림 · 보안 업데이트 사용, 버전 업데이트 PR 은 `dev` 로 |
+| 의존성 | Dependabot 취약점 알림 · 보안 업데이트 사용, 버전 업데이트 PR 은 `dev` 로, main push 마다 Go 의존성 그래프 제출 |
 | 비밀 정보 | GitHub 시크릿 스캔 + push 보호, 모든 PR / push 에서 gitleaks 검사 |
 | 코드 분석 | CodeQL 기본 스캔 (Go, JavaScript/TypeScript, Actions), 매주 + PR 마다 |
 | `main` 브랜치 | 보호 규칙: 강제 push 금지, CodeQL 결과 필요 |
