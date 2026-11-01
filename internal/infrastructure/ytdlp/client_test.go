@@ -4,6 +4,7 @@ package ytdlp
 import (
 	"context"
 	"errors"
+	"github.com/minias/smpx/internal/domain"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -147,8 +148,8 @@ func TestValidation(t *testing.T) {
 		if _, err := c.StreamURL(context.Background(), u); err == nil {
 			t.Fatalf("StreamURL(%q) expected error", u)
 		}
-		if _, err := c.Title(context.Background(), u); err == nil {
-			t.Fatalf("Title(%q) expected error", u)
+		if _, err := c.Expand(context.Background(), u); err == nil {
+			t.Fatalf("Expand(%q) expected error", u)
 		}
 	}
 	if calls != 0 {
@@ -156,29 +157,57 @@ func TestValidation(t *testing.T) {
 	}
 }
 
-func TestTitleCacheAndFallback(t *testing.T) {
-	var calls int32
-	out := "  My Song  \n"
-	c, clk := newTestClient(func(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
-		atomic.AddInt32(&calls, 1)
-		return []byte(out), nil, nil
+func TestExpandPlaylist(t *testing.T) {
+	var gotArgs []string
+	c, _ := newTestClient(func(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
+		gotArgs = args
+		return []byte("https://www.youtube.com/watch?v=a\tSong A\n" +
+			"https://www.youtube.com/watch?v=p\t[Private video]\n" +
+			"https://www.youtube.com/watch?v=b\t  Song B  \n" +
+			"https://www.youtube.com/watch?v=c\tNA\n"), nil, nil
 	})
-	ctx := context.Background()
 
-	got, err := c.Title(ctx, "https://y/a")
-	if err != nil || got != "My Song" {
-		t.Fatalf("got %q, %v", got, err)
-	}
-	clk.advance(24 * time.Hour)
-	_, _ = c.Title(ctx, "https://y/a")
-	if calls != 1 {
-		t.Fatalf("calls = %d, want 1", calls)
+	items, err := c.Expand(context.Background(), "https://www.youtube.com/watch?v=a&list=PL1")
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	out = ""
-	got, err = c.Title(ctx, "https://y/b")
-	if err != nil || got != "https://y/b" {
-		t.Fatalf("fallback got %q, %v", got, err)
+	want := []domain.PlaylistItem{
+		{Title: "Song A", URL: "https://www.youtube.com/watch?v=a"},
+		{Title: "Song B", URL: "https://www.youtube.com/watch?v=b"},
+		{Title: "https://www.youtube.com/watch?v=c", URL: "https://www.youtube.com/watch?v=c"},
+	}
+	if len(items) != len(want) {
+		t.Fatalf("items = %+v", items)
+	}
+	for i := range want {
+		if items[i] != want[i] {
+			t.Errorf("item %d = %+v, want %+v", i, items[i], want[i])
+		}
+	}
+	if gotArgs[0] != "--flat-playlist" || gotArgs[len(gotArgs)-2] != "--" {
+		t.Errorf("args = %v", gotArgs)
+	}
+}
+
+func TestExpandSingleKeepsInputURL(t *testing.T) {
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		return []byte("https://www.youtube.com/watch?v=z\tMe at the zoo\n"), nil, nil
+	})
+
+	items, err := c.Expand(context.Background(), "https://youtu.be/z?si=1")
+	if err != nil || len(items) != 1 || items[0].URL != "https://youtu.be/z?si=1" || items[0].Title != "Me at the zoo" {
+		t.Fatalf("items = %+v, %v", items, err)
+	}
+}
+
+func TestExpandEmpty(t *testing.T) {
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		return []byte("https://y/p\t[Deleted video]\n"), nil, nil
+	})
+
+	if _, err := c.Expand(context.Background(), "https://y/list?list=PL"); err == nil {
+		t.Fatal("expected error for empty playlist")
 	}
 }
 
@@ -195,17 +224,17 @@ func TestLazyBinaryResolve(t *testing.T) {
 		if bin != "/x/yt-dlp" {
 			t.Errorf("bin = %q", bin)
 		}
-		return []byte("t"), nil, nil
+		return []byte("https://y/a\tt"), nil, nil
 	}, time.Now)
 
 	if resolves != 0 {
 		t.Fatal("resolved eagerly")
 	}
-	if _, err := c.Title(context.Background(), "https://y/a"); err == nil || !strings.Contains(err.Error(), "not found") {
+	if _, err := c.Expand(context.Background(), "https://y/a"); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("err = %v", err)
 	}
 	fail = false
-	if _, err := c.Title(context.Background(), "https://y/a"); err != nil {
+	if _, err := c.Expand(context.Background(), "https://y/a"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.StreamURL(context.Background(), "https://y/a"); err != nil {

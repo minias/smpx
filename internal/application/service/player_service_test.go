@@ -11,12 +11,16 @@ import (
 )
 
 type fakeResolver struct {
-	block chan struct{} // nil 이 아니면 StreamURL 이 대기
-	err   error
+	block  chan struct{} // nil 이 아니면 StreamURL 이 대기
+	err    error
+	expand []domain.PlaylistItem // 재생목록 응답
 }
 
-func (f *fakeResolver) Title(_ context.Context, url string) (string, error) {
-	return "title:" + url, nil
+func (f *fakeResolver) Expand(_ context.Context, url string) ([]domain.PlaylistItem, error) {
+	if f.expand != nil {
+		return f.expand, nil
+	}
+	return []domain.PlaylistItem{{Title: "title:" + url, URL: url}}, nil
 }
 
 func (f *fakeResolver) StreamURL(_ context.Context, url string) (string, error) {
@@ -231,10 +235,10 @@ func TestNextPreviousWrap(t *testing.T) {
 func TestAddTrackDedupAndSave(t *testing.T) {
 	s, _, _, repo := newTestService(t)
 
-	if err := s.AddTrack("  u1 "); err != nil {
+	if _, err := s.AddTrack("  u1 "); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.AddTrack("u1"); !errors.Is(err, ErrDuplicateURL) {
+	if _, err := s.AddTrack("u1"); !errors.Is(err, ErrDuplicateURL) {
 		t.Errorf("duplicate err = %v", err)
 	}
 	if len(repo.items) != 1 || repo.items[0].Title != "title:u1" {
@@ -293,5 +297,32 @@ func TestSyncPaused(t *testing.T) {
 	s.SyncPaused(false)
 	if s.State().State != domain.Playing {
 		t.Fatalf("state = %q, want playing", s.State().State)
+	}
+}
+
+func TestAddPlaylistSkipsDuplicatesByVideoID(t *testing.T) {
+	s, _, yt, repo := newTestService(t, "https://www.youtube.com/watch?v=b&list=OLD&index=3")
+
+	yt.expand = []domain.PlaylistItem{
+		{Title: "A", URL: "https://www.youtube.com/watch?v=a"},
+		{Title: "B", URL: "https://www.youtube.com/watch?v=b"}, // 이미 있음 (URL 형식만 다름)
+		{Title: "C", URL: "https://www.youtube.com/watch?v=c"},
+		{Title: "A again", URL: "https://youtu.be/a"}, // 목록 안 중복
+	}
+
+	res, err := s.AddTrack("https://www.youtube.com/playlist?list=PL1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Added != 2 || res.Skipped != 2 {
+		t.Fatalf("result = %+v", res)
+	}
+	if len(repo.items) != 3 || repo.items[1].Title != "A" || repo.items[2].Title != "C" {
+		t.Fatalf("saved = %+v", repo.items)
+	}
+
+	// 전부 중복이면 ErrDuplicateURL
+	if _, err := s.AddTrack("https://www.youtube.com/playlist?list=PL1"); !errors.Is(err, ErrDuplicateURL) {
+		t.Fatalf("err = %v", err)
 	}
 }

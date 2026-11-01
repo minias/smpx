@@ -45,6 +45,8 @@
 	let adding = false;
 	let selected = -1;
 	let error = "";
+	let notice = "";
+	let noticeTimer = null;
 	let updateInfo = null;
 	let version = "";
 
@@ -78,6 +80,12 @@
 		}
 	}
 
+	function showNotice(text) {
+		notice = text;
+		clearTimeout(noticeTimer);
+		noticeTimer = setTimeout(() => (notice = ""), 4000);
+	}
+
 	function showError(e) {
 		error = typeof e === "string" ? e : e?.message ?? String(e);
 	}
@@ -96,8 +104,11 @@
 		adding = true;
 		error = "";
 		try {
-			await AddTrack(value);
+			const res = await AddTrack(value);
 			url = "";
+			if (res && (res.added > 1 || res.skipped > 0)) {
+				showNotice(`${res.added}곡 추가` + (res.skipped ? ` (중복 ${res.skipped}곡 제외)` : ""));
+			}
 		} catch (e) {
 			showError(e);
 		} finally {
@@ -139,6 +150,7 @@
 	function setVolume(v) {
 		volume = Math.max(0, Math.min(100, Math.round(v)));
 		clearTimeout(volumeTimer);
+		clearTimeout(noticeTimer);
 		volumeTimer = setTimeout(async () => {
 			volumeTimer = null;
 			await run(() => SetVolume(volume));
@@ -350,7 +362,7 @@
 			type="text"
 			bind:value={url}
 			on:keydown={onInputKey}
-			placeholder="YouTube URL 입력 후 Enter"
+			placeholder="YouTube 영상 또는 재생목록 URL 입력 후 Enter"
 			disabled={adding}
 			spellcheck="false"
 		/>
@@ -428,6 +440,10 @@
 		{#if version}<span class="ver">v{version}</span>{/if}
 	</div>
 
+	{#if notice}
+		<div class="notice" role="status">{notice}</div>
+	{/if}
+
 	{#if error}
 		<div class="error" role="alert">
 			<span>{error}</span>
@@ -462,6 +478,14 @@
 
 	button:hover:not(:disabled) {
 		border-color: var(--accent);
+	}
+
+	.notice {
+		padding: 8px 12px;
+		border-radius: 8px;
+		background: rgba(79, 156, 249, 0.15);
+		color: var(--accent, #4f9cf9);
+		font-size: 13px;
 	}
 
 	button:disabled {

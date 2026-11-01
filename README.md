@@ -74,7 +74,7 @@ internal/
 | 미디어 키 (재생/일시정지, 이전, 다음) | MediaSession — macOS '지금 재생 중' / 미디어 키 / AirPods | ✅ |
 | 키보드 단축키 | 앱 포커스 시 Space / ← → / ↑ ↓ | ✅ |
 | 업데이트 확인 | GitHub Release 확인 + 다운로드 링크 (자동 설치는 미지원) | ✅ |
-| 재생목록 URL 가져오기 | — | 📝 예정 |
+| 재생목록 URL 가져오기 | `list=` URL 이면 목록 전체 추가 (최대 500곡, 비공개/삭제 영상 제외, 영상 ID 기준 중복 제외) | ✅ |
 | 영상 보기 (별도 창) | — | 📝 예정 |
 | 시스템 트레이 | Wails v2 미지원 → 보류 | ⏸ |
 | 볼륨키 연타로 이전/다음곡 (MediaKeyPatternDetector) | 전역 키 후킹 필요 → 보류 | ⏸ |
@@ -89,12 +89,13 @@ internal/
 | `go test -race ./...` — service · ytdlp(Manager 포함) · storage · update | ✅ |
 | 앱 실행 → 재생(Space) → WebView 오디오 출력 → 곡 종료 후 자동 다음곡(사용자 입력 없이) → 마지막 곡 후 정지 | ✅ |
 | 오디오 형식: opus 는 길이 정상, m4a 는 WKWebView 에서 길이 2배 → opus 우선 | ✅ |
+| 재생목록 URL(40곡) 붙여넣기 → 39곡 추가 + 기존 1곡 중복 제외, 목록 / playlist.json 반영 | ✅ |
 | yt-dlp 최초 다운로드 / 자동 업데이트 실제 동작 | ⚠️ 단위 테스트(httptest)만 확인 |
 | Linux 실행 | ⚠️ 컴파일만 확인 |
 
 ## 남은 과제
 
-- 재생목록 URL 가져오기, 영상 보기(별도 창), SMP 앱 아이콘 적용
+- 영상 보기(별도 창)
 - 배포 시 macOS 경고 없이 열리려면 Apple Developer ID 서명 / 공증 필요 (미적용 시 최초 1회 '그래도 열기')
 - 시스템 트레이, 볼륨키 패턴 감지
 

@@ -23,6 +23,9 @@ var (
 
 const ytdlpTimeout = 60 * time.Second
 
+// 재생목록 조회는 곡 수에 비례해 오래 걸림
+const expandTimeout = 3 * time.Minute
+
 // Listener 상태 변경 알림 (UI 바인딩용)
 type Listener struct {
 	OnStateChanged func(state PlayerState)
@@ -91,44 +94,62 @@ func (s *PlayerService) State() PlayerState {
 	return s.state.clone()
 }
 
-// AddTrack YouTube URL 추가 (제목 조회 후 저장)
-func (s *PlayerService) AddTrack(url string) error {
+// AddResult 추가 결과
+type AddResult struct {
+	Added   int `json:"added"`
+	Skipped int `json:"skipped"` // 이미 있는 곡
+}
+
+// AddTrack YouTube URL 추가 (재생목록 URL 이면 목록 전체, 영상 ID 기준 중복 제외)
+func (s *PlayerService) AddTrack(url string) (AddResult, error) {
 	url = strings.TrimSpace(url)
 	if url == "" {
-		return fmt.Errorf("URL을 입력하세요")
+		return AddResult{}, fmt.Errorf("URL을 입력하세요")
 	}
 
-	if s.contains(url) {
-		return ErrDuplicateURL
+	// 단일 영상이 이미 있으면 yt-dlp 호출 없이 종료
+	if !strings.Contains(url, "list=") && s.contains(url) {
+		return AddResult{Skipped: 1}, ErrDuplicateURL
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), ytdlpTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), expandTimeout)
 	defer cancel()
 
-	title, err := s.youtube.Title(ctx, url)
+	found, err := s.youtube.Expand(ctx, url)
 	if err != nil {
-		return err
+		return AddResult{}, err
 	}
 
 	s.mu.Lock()
-	// 제목 조회 중 같은 URL 이 추가됐을 수 있음
+
+	// 조회 중 추가된 곡이 있을 수 있으므로 lock 안에서 중복 판별
+	seen := make(map[string]bool, len(s.state.Playlist)+len(found))
 	for _, item := range s.state.Playlist {
-		if item.URL == url {
-			s.mu.Unlock()
-			return ErrDuplicateURL
-		}
+		seen[domain.VideoID(item.URL)] = true
 	}
 
-	s.state.Playlist = append(s.state.Playlist, domain.PlaylistItem{
-		Title: title,
-		URL:   url,
-	})
+	var result AddResult
+	for _, item := range found {
+		id := domain.VideoID(item.URL)
+		if seen[id] {
+			result.Skipped++
+			continue
+		}
+		seen[id] = true
+		s.state.Playlist = append(s.state.Playlist, item)
+		result.Added++
+	}
+
 	items := s.state.clone().Playlist
 	s.mu.Unlock()
 
+	if result.Added == 0 {
+		return result, ErrDuplicateURL
+	}
+
 	s.emitState()
 
-	return s.repo.Save(items)
+	return result, s.repo.Save(items)
 }
 
 // RemoveTrack 항목 삭제 (재생 중인 곡이면 정지)
@@ -373,8 +394,9 @@ func (s *PlayerService) contains(url string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	id := domain.VideoID(url)
 	for _, item := range s.state.Playlist {
-		if item.URL == url {
+		if domain.VideoID(item.URL) == id {
 			return true
 		}
 	}
