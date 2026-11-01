@@ -24,3 +24,7 @@ cd frontend && npm run build
 ## 보안
 
 취약점은 이슈가 아닌 [SECURITY_ko.md](SECURITY_ko.md) 의 절차로 제보해 주세요.
+
+## 행동 강령
+
+이 프로젝트에 참여하는 모든 분은 [행동 강령](CODE_OF_CONDUCT_ko.md) 을 따라 주세요.
