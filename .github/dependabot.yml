@@ -4,6 +4,9 @@ updates:
   - package-ecosystem: "gomod"
     directory: "/"        # Go 모듈 루트
     target-branch: "dev"
+    # 간접 의존성 버전은 wails 등 직접 의존성이 결정하므로 직접 의존성만 업데이트
+    allow:
+      - dependency-type: "direct"
     schedule:
       interval: "weekly"
     commit-message:
