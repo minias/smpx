@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "smpx",
+  "outputfilename": "smpx",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "minias",
+    "email": "gnuhacker@gmail.com"
+  },
+  "info": {
+    "companyName": "minias",
+    "productName": "SMPX",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright © 2026 minias lee",
+    "comments": "YouTube background music player for macOS / Linux"
+  }
+}

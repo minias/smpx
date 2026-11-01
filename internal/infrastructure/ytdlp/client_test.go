@@ -1,0 +1,343 @@
+// internal/infrastructure/ytdlp/client_test.go
+package ytdlp
+
+import (
+	"context"
+	"errors"
+	"github.com/minias/smpx/internal/domain"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+// fakeClock 테스트용 시계
+type fakeClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (f *fakeClock) now() time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.t
+}
+
+func (f *fakeClock) advance(d time.Duration) {
+	f.mu.Lock()
+	f.t = f.t.Add(d)
+	f.mu.Unlock()
+}
+
+func okResolve(context.Context) (string, error) { return "/bin/yt-dlp", nil }
+
+func newTestClient(run runFunc) (*Client, *fakeClock) {
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	return newClient(okResolve, run, clk.now), clk
+}
+
+func TestStreamURLCacheHitAndTTL(t *testing.T) {
+	var calls int32
+	var gotArgs []string
+	c, clk := newTestClient(func(_ context.Context, bin string, args ...string) ([]byte, []byte, error) {
+		atomic.AddInt32(&calls, 1)
+		gotArgs = args
+		return []byte("\nhttps://audio.example/1\nhttps://audio.example/2\n"), nil, nil
+	})
+	ctx := context.Background()
+	url := "https://www.youtube.com/watch?v=x"
+
+	for i := 0; i < 3; i++ {
+		got, err := c.StreamURL(ctx, url)
+		if err != nil || got != "https://audio.example/1" {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+	want := []string{"-f", audioFormat, "--no-playlist", "--no-warnings", "-g", "--", url}
+	if strings.Join(gotArgs, " ") != strings.Join(want, " ") {
+		t.Fatalf("args = %v", gotArgs)
+	}
+
+	clk.advance(29 * time.Minute)
+	_, _ = c.StreamURL(ctx, url)
+	if calls != 1 {
+		t.Fatalf("before TTL calls = %d", calls)
+	}
+	clk.advance(2 * time.Minute)
+	_, _ = c.StreamURL(ctx, url)
+	if calls != 2 {
+		t.Fatalf("after TTL calls = %d, want 2", calls)
+	}
+}
+
+func TestStreamURLDedup(t *testing.T) {
+	var calls int32
+	release := make(chan struct{})
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		atomic.AddInt32(&calls, 1)
+		<-release
+		return []byte("https://audio.example/x\n"), nil, nil
+	})
+
+	const n = 20
+	var wg sync.WaitGroup
+	results := make([]string, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i], _ = c.StreamURL(context.Background(), "https://y/v")
+		}(i)
+	}
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wg.Wait()
+
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+	for i, r := range results {
+		if r != "https://audio.example/x" {
+			t.Fatalf("result[%d] = %q", i, r)
+		}
+	}
+}
+
+func TestErrorIncludesStderrTail(t *testing.T) {
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		stderr := "line1\nline2\nline3\nline4\nline5\nERROR: [youtube] x: Video unavailable\r\n\n"
+		return nil, []byte(stderr), errors.New("exit status 1")
+	})
+	_, err := c.StreamURL(context.Background(), "https://y/v")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "exit status 1") || !strings.Contains(msg, "Video unavailable") {
+		t.Fatalf("msg = %q", msg)
+	}
+	if strings.Contains(msg, "line1") {
+		t.Fatalf("tail should drop old lines: %q", msg)
+	}
+	// 실패는 캐시하지 않음
+	if _, ok := c.streams.get("https://y/v"); ok {
+		t.Fatal("error cached")
+	}
+}
+
+func TestEmptyStdoutIsError(t *testing.T) {
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		return []byte("  \n"), nil, nil
+	})
+	if _, err := c.StreamURL(context.Background(), "https://y/v"); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestValidation(t *testing.T) {
+	var calls int32
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		atomic.AddInt32(&calls, 1)
+		return []byte("x"), nil, nil
+	})
+	for _, u := range []string{"", "   ", "--exec=rm", "-f"} {
+		if _, err := c.StreamURL(context.Background(), u); err == nil {
+			t.Fatalf("StreamURL(%q) expected error", u)
+		}
+		if _, err := c.Expand(context.Background(), u); err == nil {
+			t.Fatalf("Expand(%q) expected error", u)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("run called %d times", calls)
+	}
+}
+
+func TestExpandPlaylist(t *testing.T) {
+	var gotArgs []string
+	c, _ := newTestClient(func(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
+		gotArgs = args
+		return []byte("https://www.youtube.com/watch?v=a\tSong A\n" +
+			"https://www.youtube.com/watch?v=p\t[Private video]\n" +
+			"https://www.youtube.com/watch?v=b\t  Song B  \n" +
+			"https://www.youtube.com/watch?v=c\tNA\n"), nil, nil
+	})
+
+	items, err := c.Expand(context.Background(), "https://www.youtube.com/watch?v=a&list=PL1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []domain.PlaylistItem{
+		{Title: "Song A", URL: "https://www.youtube.com/watch?v=a"},
+		{Title: "Song B", URL: "https://www.youtube.com/watch?v=b"},
+		{Title: "https://www.youtube.com/watch?v=c", URL: "https://www.youtube.com/watch?v=c"},
+	}
+	if len(items) != len(want) {
+		t.Fatalf("items = %+v", items)
+	}
+	for i := range want {
+		if items[i] != want[i] {
+			t.Errorf("item %d = %+v, want %+v", i, items[i], want[i])
+		}
+	}
+	if gotArgs[0] != "--flat-playlist" || gotArgs[len(gotArgs)-2] != "--" {
+		t.Errorf("args = %v", gotArgs)
+	}
+}
+
+func TestExpandSingleKeepsInputURL(t *testing.T) {
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		return []byte("https://www.youtube.com/watch?v=z\tMe at the zoo\n"), nil, nil
+	})
+
+	items, err := c.Expand(context.Background(), "https://youtu.be/z?si=1")
+	if err != nil || len(items) != 1 || items[0].URL != "https://youtu.be/z?si=1" || items[0].Title != "Me at the zoo" {
+		t.Fatalf("items = %+v, %v", items, err)
+	}
+}
+
+func TestExpandEmpty(t *testing.T) {
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		return []byte("https://y/p\t[Deleted video]\n"), nil, nil
+	})
+
+	if _, err := c.Expand(context.Background(), "https://y/list?list=PL"); err == nil {
+		t.Fatal("expected error for empty playlist")
+	}
+}
+
+func TestLazyBinaryResolve(t *testing.T) {
+	var resolves int32
+	fail := true
+	c := newClient(func(context.Context) (string, error) {
+		atomic.AddInt32(&resolves, 1)
+		if fail {
+			return "", errors.New("not found")
+		}
+		return "/x/yt-dlp", nil
+	}, func(_ context.Context, bin string, _ ...string) ([]byte, []byte, error) {
+		if bin != "/x/yt-dlp" {
+			t.Errorf("bin = %q", bin)
+		}
+		return []byte("https://y/a\tt"), nil, nil
+	}, time.Now)
+
+	if resolves != 0 {
+		t.Fatal("resolved eagerly")
+	}
+	if _, err := c.Expand(context.Background(), "https://y/a"); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("err = %v", err)
+	}
+	fail = false
+	if _, err := c.Expand(context.Background(), "https://y/a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.StreamURL(context.Background(), "https://y/a"); err != nil {
+		t.Fatal(err)
+	}
+	// 경로 캐시는 Manager 담당 — 호출마다 resolve
+	if resolves != 3 {
+		t.Fatalf("resolves = %d, want 3", resolves)
+	}
+}
+
+func TestWaiterContextCancel(t *testing.T) {
+	release := make(chan struct{})
+	started := make(chan struct{})
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		close(started)
+		<-release
+		return []byte("u"), nil, nil
+	})
+	go func() { _, _ = c.StreamURL(context.Background(), "https://y/v") }()
+	<-started
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := c.StreamURL(ctx, "https://y/v"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v", err)
+	}
+	close(release)
+}
+
+func TestStreamsVideo(t *testing.T) {
+	var gotArgs []string
+	c, _ := newTestClient(func(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
+		gotArgs = args
+		if args[1] == videoFormat {
+			return []byte("https://v/video\nhttps://v/audio\n"), nil, nil
+		}
+		return []byte("https://v/audio-only\n"), nil, nil
+	})
+
+	st, err := c.Streams(context.Background(), "https://y/v", true)
+	if err != nil || st.VideoURL != "https://v/video" || st.AudioURL != "https://v/audio" {
+		t.Fatalf("video = %+v, %v (args %v)", st, err, gotArgs)
+	}
+
+	st, err = c.Streams(context.Background(), "https://y/v", false)
+	if err != nil || st.VideoURL != "" || st.AudioURL != "https://v/audio-only" {
+		t.Fatalf("audio = %+v, %v", st, err)
+	}
+}
+
+func TestStreamsVideoSingleStream(t *testing.T) {
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		return []byte("https://v/muxed\n"), nil, nil
+	})
+
+	st, err := c.Streams(context.Background(), "https://y/v", true)
+	if err != nil || st.VideoURL != "https://v/muxed" || st.AudioURL != "" {
+		t.Fatalf("got %+v, %v", st, err)
+	}
+}
+
+func TestStreamFallsBackWhenBlocked(t *testing.T) {
+	var clients []string
+	c, _ := newTestClient(func(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
+		client := "default"
+		for i, a := range args {
+			if a == "--extractor-args" {
+				client = args[i+1]
+			}
+		}
+		clients = append(clients, client)
+		if client == "default" {
+			return []byte("https://v/blocked\n"), nil, nil
+		}
+		return []byte("https://v/ok\n"), nil, nil
+	})
+	c.probe = func(_ context.Context, u string) error {
+		if u == "https://v/blocked" {
+			return errStreamBlocked
+		}
+		return nil
+	}
+
+	got, err := c.StreamURL(context.Background(), "https://y/v")
+	if err != nil || got != "https://v/ok" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if len(clients) != 2 || clients[1] != "youtube:player_client=android_vr" {
+		t.Fatalf("clients = %v", clients)
+	}
+}
+
+func TestStreamAllBlocked(t *testing.T) {
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		return []byte("https://v/blocked\n"), nil, nil
+	})
+	c.probe = func(context.Context, string) error { return errStreamBlocked }
+
+	if _, err := c.StreamURL(context.Background(), "https://y/v"); !errors.Is(err, errStreamBlocked) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, ok := c.streams.get("https://y/v"); ok {
+		t.Fatal("blocked result cached")
+	}
+}
