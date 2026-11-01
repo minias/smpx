@@ -10,6 +10,7 @@ import (
 
 	appplayer "github.com/minias/smpx/internal/application/player"
 	"github.com/minias/smpx/internal/domain"
+	"github.com/minias/smpx/internal/infrastructure/streamproxy"
 )
 
 var _ appplayer.AudioPlayer = (*webviewPlayer)(nil)
@@ -47,10 +48,13 @@ type webviewPlayer struct {
 	onVideoClosed func()
 
 	window *videoWindow
+
+	// WebView 의 큰 범위 요청을 나눠 받는 로컬 프록시 (nil 이면 원본 주소 사용)
+	proxy *streamproxy.Proxy
 }
 
-func newWebviewPlayer() *webviewPlayer {
-	p := &webviewPlayer{}
+func newWebviewPlayer(proxy *streamproxy.Proxy) *webviewPlayer {
+	p := &webviewPlayer{proxy: proxy}
 	p.window = newVideoWindow(p.handleVideoEvent)
 	return p
 }
@@ -89,8 +93,8 @@ func (p *webviewPlayer) Play(stream domain.Stream, volume int, startAt float64) 
 	cmd := audioCommand{
 		Action:   "play",
 		Seq:      p.seq,
-		URL:      stream.AudioURL,
-		VideoURL: stream.VideoURL,
+		URL:      p.wrap(stream.AudioURL),
+		VideoURL: p.wrap(stream.VideoURL),
 		Volume:   volume,
 		StartAt:  startAt,
 		Title:    stream.Title,
@@ -104,6 +108,13 @@ func (p *webviewPlayer) Play(stream domain.Stream, volume int, startAt float64) 
 	p.window.close()
 
 	return p.emitLocked(cmd)
+}
+
+func (p *webviewPlayer) wrap(rawURL string) string {
+	if p.proxy == nil {
+		return rawURL
+	}
+	return p.proxy.Wrap(rawURL)
 }
 
 func (p *webviewPlayer) Stop() error {

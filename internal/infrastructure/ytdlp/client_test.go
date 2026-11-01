@@ -296,3 +296,48 @@ func TestStreamsVideoSingleStream(t *testing.T) {
 		t.Fatalf("got %+v, %v", st, err)
 	}
 }
+
+func TestStreamFallsBackWhenBlocked(t *testing.T) {
+	var clients []string
+	c, _ := newTestClient(func(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
+		client := "default"
+		for i, a := range args {
+			if a == "--extractor-args" {
+				client = args[i+1]
+			}
+		}
+		clients = append(clients, client)
+		if client == "default" {
+			return []byte("https://v/blocked\n"), nil, nil
+		}
+		return []byte("https://v/ok\n"), nil, nil
+	})
+	c.probe = func(_ context.Context, u string) error {
+		if u == "https://v/blocked" {
+			return errStreamBlocked
+		}
+		return nil
+	}
+
+	got, err := c.StreamURL(context.Background(), "https://y/v")
+	if err != nil || got != "https://v/ok" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if len(clients) != 2 || clients[1] != "youtube:player_client=android_vr" {
+		t.Fatalf("clients = %v", clients)
+	}
+}
+
+func TestStreamAllBlocked(t *testing.T) {
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		return []byte("https://v/blocked\n"), nil, nil
+	})
+	c.probe = func(context.Context, string) error { return errStreamBlocked }
+
+	if _, err := c.StreamURL(context.Background(), "https://y/v"); !errors.Is(err, errStreamBlocked) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, ok := c.streams.get("https://y/v"); ok {
+		t.Fatal("blocked result cached")
+	}
+}

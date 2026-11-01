@@ -41,7 +41,8 @@ internal/
     playlist/                    Repository 포트
     service/                     PlayerService (SMP PlayerFacade + UseCases), PlayerState
   infrastructure/
-    ytdlp/                       yt-dlp 클라이언트(TTL 캐시, 중복 요청 방지) + Manager(설치 / 업데이트)
+    ytdlp/                       yt-dlp 클라이언트(TTL 캐시, 중복 요청 방지, 스트림 403 확인 후 클라이언트 우회) + Manager(설치 / 업데이트)
+    streamproxy/                 127.0.0.1 스트림 프록시: WebView 의 큰 범위 요청을 2MB 조각으로 나눠 YouTube 403 회피
     storage/                     playlist.json 저장소
     update/                      GitHub Release 업데이트 확인
 ```
@@ -93,7 +94,8 @@ internal/
 | 화면 보기: 영상 창 표시 → 영상+소리 재생 → 영상 비율로 창 크기 맞춤 → 체크 해제 / 창 닫기 시 오디오로 이어서 재생 | ✅ |
 | 재생목록 URL(40곡) 붙여넣기 → 39곡 추가 + 기존 1곡 중복 제외, 목록 / playlist.json 반영 | ✅ |
 | yt-dlp 최초 다운로드 / 자동 업데이트 실제 동작 | ⚠️ 단위 테스트(httptest)만 확인 |
-| 일부 영상은 최신 yt-dlp 에서도 스트림 403 (YouTube PO 토큰 요구 영상) | ⚠️ 재생 실패로 표시 |
+| 스트림 403 대응: 큰 범위 요청 분할(프록시) + 막힌 스트림은 android_vr 클라이언트로 재시도 → 실패하던 `ha8zHkXEnLc` 오디오 / 화면 보기 재생 | ✅ |
+| 일부 영상은 모든 클라이언트에서 403 (예: `dQw4w9WgXcQ`) | ⚠️ "YouTube가 이 영상의 스트림을 차단했습니다" 표시 |
 | Linux 실행 | ⚠️ 컴파일만 확인 |
 
 ## 남은 과제
