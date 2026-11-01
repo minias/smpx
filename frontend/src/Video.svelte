@@ -184,6 +184,7 @@
 		EventsOn("video:command", onCommand);
 		setupMediaSession();
 		message = "영상 불러오는 중…";
+		window.go.main.VideoApp.Ready();
 	});
 
 	onDestroy(() => EventsOff("video:command"));
@@ -208,6 +209,7 @@
 			onMasterPlaying(e);
 		}}
 		on:pause={onMasterPause}
+		on:loadedmetadata={() => window.go.main.VideoApp.Fit(video.videoWidth, video.videoHeight, window.innerWidth, window.innerHeight)}
 	/>
 	{#if message}<p class="msg">{message}</p>{/if}
 </div>

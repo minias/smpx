@@ -427,9 +427,10 @@
 		<button class="loop" class:active={player.loopMode !== "none"} on:click={cycleLoop} title="반복 모드">
 			{LOOP_LABELS[player.loopMode] ?? player.loopMode}
 		</button>
-		<button class="loop" class:active={player.showVideo} on:click={toggleVideo} title="화면 보기 (별도 창, V)">
-			📺 화면 {player.showVideo ? "켬" : "끔"}
-		</button>
+		<label class="check" title="체크하면 영상을 별도 창으로 보여줍니다 (V)">
+			<input type="checkbox" checked={player.showVideo} on:change={toggleVideo} on:keydown|stopPropagation />
+			📺 화면 보기
+		</label>
 		<button on:click={() => removeTrack(selected)} disabled={selected < 0} title="선택 항목 삭제 (Delete)">
 			🗑️ 삭제
 		</button>
@@ -489,6 +490,23 @@
 
 	button:hover:not(:disabled) {
 		border-color: var(--accent);
+	}
+
+	.check {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		cursor: pointer;
+		user-select: none;
+		white-space: nowrap;
+	}
+
+	.check input {
+		width: 16px;
+		height: 16px;
+		margin: 0;
+		accent-color: var(--accent, #4f8cff);
+		cursor: pointer;
 	}
 
 	button:disabled {
