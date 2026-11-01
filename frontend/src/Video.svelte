@@ -17,6 +17,7 @@
 	let bufferPaused = false; // 영상 버퍼링으로 오디오를 잠시 멈춤
 	let lastProgress = 0;
 	let message = "";
+	let fast = false; // 2배속 (Space 누르는 동안)
 
 	const master = () => (separate ? audio : video);
 
@@ -55,6 +56,7 @@
 					audio.load();
 				}
 				setVolume(cmd.volume);
+				setRate(fast);
 				if (cmd.startAt > 0) {
 					video.currentTime = cmd.startAt;
 					if (separate) audio.currentTime = cmd.startAt;
@@ -79,6 +81,14 @@
 				setVolume(cmd.volume);
 				break;
 		}
+	}
+
+	// 영상 / 오디오 모두 같은 속도 (음 높이는 유지)
+	function setRate(on) {
+		fast = on;
+		const rate = on ? 2 : 1;
+		video.playbackRate = rate;
+		audio.playbackRate = rate;
 	}
 
 	function setVolume(v) {
@@ -151,11 +161,36 @@
 	}
 
 	function onKey(e) {
-		const actions = { " ": "playpause", ArrowRight: "next", ArrowLeft: "prev" };
+		// Enter: 전체 화면 전환, Esc: 전체 화면 해제
+		if (e.key === "Enter") {
+			e.preventDefault();
+			window.go.main.VideoApp.ToggleFullscreen();
+			return;
+		}
+		if (e.key === "Escape") {
+			window.go.main.VideoApp.ExitFullscreen();
+			return;
+		}
+
+		// Space: 누르고 있는 동안 2배속 (키 반복 입력은 무시)
+		if (e.key === " ") {
+			e.preventDefault();
+			if (!e.repeat) setRate(true);
+			return;
+		}
+
+		const actions = { ArrowRight: "next", ArrowLeft: "prev" };
 		const action = actions[e.key];
 		if (action && seq) {
 			e.preventDefault();
 			report({ event: "command", seq, action });
+		}
+	}
+
+	function onKeyUp(e) {
+		if (e.key === " ") {
+			e.preventDefault();
+			setRate(false);
 		}
 	}
 
@@ -190,7 +225,8 @@
 	onDestroy(() => EventsOff("video:command"));
 </script>
 
-<svelte:window on:keydown={onKey} />
+<!-- 창이 포커스를 잃으면 keyup 이 오지 않으므로 보통 속도로 복귀 -->
+<svelte:window on:keydown={onKey} on:keyup={onKeyUp} on:blur={() => setRate(false)} />
 
 <!-- svelte-ignore a11y-media-has-caption -->
 <!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -212,6 +248,7 @@
 		on:loadedmetadata={() => window.go.main.VideoApp.Fit(video.videoWidth, video.videoHeight, window.innerWidth, window.innerHeight)}
 	/>
 	{#if message}<p class="msg">{message}</p>{/if}
+	{#if fast}<span class="rate">2×</span>{/if}
 </div>
 
 <audio
@@ -240,6 +277,19 @@
 		height: 100%;
 		object-fit: contain;
 		background: #000;
+	}
+
+	.rate {
+		position: absolute;
+		top: 12px;
+		right: 14px;
+		padding: 2px 8px;
+		border-radius: 6px;
+		background: rgba(0, 0, 0, 0.55);
+		color: #fff;
+		font-size: 13px;
+		font-weight: 600;
+		pointer-events: none;
 	}
 
 	.msg {
