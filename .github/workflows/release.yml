@@ -146,20 +146,22 @@ jobs:
       - name: Smoke test (xvfb)
         run: |
           sudo apt-get install -y xvfb
+          # 깨끗한 설정 폴더에서 실행 (러너는 XDG_CONFIG_HOME 을 지정하므로 함께 변경)
           export HOME="$RUNNER_TEMP/home"
-          mkdir -p "$HOME"
+          export XDG_CONFIG_HOME="$HOME/.config"
+          mkdir -p "$XDG_CONFIG_HOME"
           export WEBKIT_DISABLE_COMPOSITING_MODE=1
 
           dbus-run-session -- xvfb-run -a smpx > "$RUNNER_TEMP/smpx.log" 2>&1 &
 
-          YTDLP="$HOME/.config/smpx/bin/yt-dlp"
+          YTDLP="$XDG_CONFIG_HOME/smpx/bin/yt-dlp"
           for i in $(seq 1 150); do
             [ -x "$YTDLP" ] && break
             sleep 2
           done
 
           cat "$RUNNER_TEMP/smpx.log"
-          ls -la "$HOME/.config/smpx" "$HOME/.config/smpx/bin" || true
+          ls -la "$XDG_CONFIG_HOME/smpx/bin" || true
           pgrep -x smpx
           "$YTDLP" --version
           pkill -x smpx || true

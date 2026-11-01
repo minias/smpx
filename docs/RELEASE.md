@@ -37,21 +37,60 @@
 | `APPLE_TEAM_ID` | Team ID (developer.apple.com → Membership) |
 | `APPLE_APP_PASSWORD` | appleid.apple.com 에서 만든 앱 암호 |
 
-### 인증서 준비
+### 1. Developer ID Application 인증서 만들기
 
-1. Xcode → Settings → Accounts → Manage Certificates → `+` → **Developer ID Application** 생성
-   (또는 developer.apple.com → Certificates 에서 CSR 로 발급)
-2. 키체인 접근 → 내 인증서 → `Developer ID Application: …` 우클릭 → 내보내기 → `.p12` (암호 지정)
-3. base64 로 변환해 Secret 등록 (파일은 등록 후 삭제)
+> Xcode 에서 기본으로 만들어지는 **Apple Development** 인증서는 개발용이라 배포용 서명에 쓸 수 없습니다.
+> 앱 스토어 밖에서 배포하려면 **Developer ID Application** 인증서가 필요합니다. (Apple Developer Program 계정 소유자만 생성 가능)
+
+1. Xcode → **설정(Settings)** → **Accounts** → 계정 선택 → 팀 선택 → **Manage Certificates…**
+2. 왼쪽 아래 **+** → **Developer ID Application** 선택
+3. 확인: 터미널에서 아래 명령에 `Developer ID Application: …` 이 보이면 성공
 
 ```bash
-base64 -i DeveloperID.p12 | gh secret set MACOS_CERT_P12_BASE64 --repo minias/smpx
-gh secret set MACOS_CERT_PASSWORD --repo minias/smpx    # 입력 프롬프트로 값 입력
+security find-identity -v -p codesigning
+```
+
+### 2. 인증서를 .p12 파일로 내보내기
+
+1. **키체인 접근(Keychain Access)** 앱 실행 (Spotlight 에서 "키체인")
+2. 왼쪽 **기본 키체인 → 로그인** 선택 → 위쪽 탭에서 **내 인증서** 선택
+3. `Developer ID Application: <이름> (<Team ID>)` 항목을 우클릭 → **"…" 내보내기**
+   (항목 왼쪽 ▶ 를 펼쳐 개인 키가 함께 있는지 확인 — 개인 키가 없으면 내보낼 수 없음)
+4. 파일 포맷 **개인 정보 교환(.p12)** → 바탕화면에 `DeveloperID.p12` 로 저장
+5. 내보내기 **암호**를 새로 지정 → 이 값이 `MACOS_CERT_PASSWORD`
+6. Mac 로그인 암호를 물으면 입력 (키체인 접근 허용)
+
+### 3. GitHub Secrets 등록
+
+> 암호 / 인증서 값은 채팅이나 파일에 붙여넣지 말고, **본인 터미널(터미널.app)** 에서 직접 입력하세요.
+> `gh secret set` 은 값을 입력받는 프롬프트를 띄우며, 입력 값은 화면에 표시되지 않습니다.
+
+준비할 값:
+
+| Secret | 확인 위치 |
+|---|---|
+| `APPLE_ID` | Apple Developer 계정 이메일 |
+| `APPLE_TEAM_ID` | developer.apple.com → Account → **Membership details** → Team ID (10자리) |
+| `APPLE_APP_PASSWORD` | appleid.apple.com → **로그인 및 보안** → **앱 암호** → 생성 (예: `smpx-notary`) |
+
+```bash
+# 인증서 (.p12 → base64)
+base64 -i ~/Desktop/DeveloperID.p12 | gh secret set MACOS_CERT_P12_BASE64 --repo minias/smpx
+
+# 아래는 실행하면 값 입력 프롬프트가 뜸
+gh secret set MACOS_CERT_PASSWORD --repo minias/smpx
 gh secret set APPLE_ID --repo minias/smpx
 gh secret set APPLE_TEAM_ID --repo minias/smpx
 gh secret set APPLE_APP_PASSWORD --repo minias/smpx
-rm DeveloperID.p12
+
+# 등록 확인 (값은 보이지 않고 이름만 표시)
+gh secret list --repo minias/smpx
+
+# 내보낸 파일 삭제
+rm ~/Desktop/DeveloperID.p12
 ```
+
+등록 후 다음 태그 릴리스부터 dmg 가 서명 · 공증되어 경고 없이 열립니다.
 
 ## 로컬 패키징
 
