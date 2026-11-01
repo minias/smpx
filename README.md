@@ -1,134 +1,138 @@
 # SMPX
 
-[SMP](https://github.com/minias/smp)(Windows 전용 C# WinForms 유튜브 백그라운드 음악 재생기)를
-**macOS / Linux** 에서 동작하도록 Go + [Wails v2](https://wails.io) 로 확장한 프로젝트입니다.
-Windows 는 SMP 를 사용합니다.
+**English** | [한국어](README_ko.md)
 
-YouTube 링크를 플레이리스트에 추가하면 `yt-dlp` 로 오디오 스트림 주소를 추출하고, 앱 화면(WebView)의 HTML5 오디오로 재생합니다.
-**사용자가 별도로 설치할 것이 없습니다.** `yt-dlp` 는 최초 실행 시 앱이 내려받고 하루 한 번 자동 업데이트합니다.
+SMPX extends [SMP](https://github.com/minias/smp) — a Windows-only C# WinForms YouTube background music player —
+to **macOS / Linux**, rebuilt with Go + [Wails v2](https://wails.io). On Windows, use SMP.
 
-> 상태: ✅ SMP 기능 이식 완료 — 무설정 설치(macOS dmg / Linux deb), 화면 보기, 재생목록 가져오기, 메뉴바·트레이 (2026-11-01)
+Add YouTube links to the playlist and SMPX extracts the audio stream with `yt-dlp` and plays it through the app's WebView (HTML5 audio).
+**Nothing else to install.** The app downloads `yt-dlp` on first launch and keeps it updated daily.
+
+> Status: ✅ SMP feature port complete — zero-setup install (macOS dmg / Linux deb), video window, playlist import, menu bar / tray (2026-11-01)
 
 ---
 
-## 설치
+## Install
 
-[Releases](https://github.com/minias/smpx/releases) 에서 받아 설치하면 바로 사용할 수 있습니다. (yt-dlp 는 최초 실행 시 자동 설치)
+Download from [Releases](https://github.com/minias/smpx/releases) and install — ready to use. (`yt-dlp` is installed automatically on first launch.)
 
-| OS | 파일 | 설치 |
+| OS | File | Install |
 |---|---|---|
-| macOS 11+ (Intel / Apple Silicon) | `SMPX_<버전>_macos_universal.dmg` | 열어서 `SMPX` 를 `Applications` 로 드래그 |
-| Ubuntu 22.04+ / Debian 12+ | `smpx_<버전>_linux_amd64.deb` | `sudo apt install ./smpx_<버전>_linux_amd64.deb` |
-| 기타 Linux | `smpx_<버전>_linux_amd64.tar.gz` | 압축 해제 후 `smpx` 실행 |
+| macOS 11+ (Intel / Apple Silicon) | `SMPX_<version>_macos_universal.dmg` | Open it and drag `SMPX` to `Applications` |
+| Ubuntu 22.04+ / Debian 12+ | `smpx_<version>_linux_amd64.deb` | `sudo apt install ./smpx_<version>_linux_amd64.deb` |
+| Other Linux | `smpx_<version>_linux_amd64.tar.gz` | Extract and run `smpx` |
 
-릴리스 절차, macOS 서명 / 공증 설정은 [docs/RELEASE.md](docs/RELEASE.md) 참고.
+> **First launch on macOS**: the app is not notarized, so the first time you need **System Settings → Privacy & Security → Open Anyway**
+> (or run `xattr -dr com.apple.quarantine /Applications/smpx.app` in Terminal). After that it opens normally.
+
+See [docs/RELEASE.md](docs/RELEASE.md) for the release process and macOS signing / notarization setup.
 
 ---
 
-## 기술 스택
+## Tech stack
 
-| 구분 | SMP (원본) | SMPX |
+| | SMP (original) | SMPX |
 |---|---|---|
-| 언어 / UI | C# .NET, WinForms | Go 1.25, Wails v2.12, Svelte 3 |
-| 오디오 | NAudio (MediaFoundation) | WebView HTML5 `<audio>` (opus / m4a) |
-| 스트림 추출 | yt-dlp.exe (동봉) | yt-dlp (최초 실행 시 자동 설치 + 자동 업데이트) |
-| 미디어 키 | 키보드 훅 | MediaSession (macOS '지금 재생 중', 미디어 키, AirPods) |
-| 플랫폼 | Windows | macOS / Linux |
+| Language / UI | C# .NET, WinForms | Go 1.26, Wails v2.17, Svelte 3 |
+| Audio | NAudio (MediaFoundation) | WebView HTML5 `<audio>` (opus / m4a) |
+| Stream extraction | yt-dlp.exe (bundled) | yt-dlp (auto-installed on first launch + auto-updated) |
+| Media keys | Keyboard hook | MediaSession (macOS Now Playing, media keys, AirPods) |
+| Platforms | Windows | macOS / Linux |
 
 ---
 
-## 아키텍처
+## Architecture
 
-SMP 의 클린 아키텍처 구조(UI → UseCase → Domain / Infrastructure)를 그대로 따릅니다.
-재생 상태는 Go(`PlayerService`)가 관리하고, 실제 소리는 프론트엔드의 `<audio>` 가 냅니다.
+SMPX keeps SMP's clean architecture (UI → UseCase → Domain / Infrastructure).
+Go (`PlayerService`) owns the playback state; the frontend's `<audio>` element produces the sound.
 
 ```
-app.go / main.go                 Wails 바인딩 (UI → Service 호출만 담당)
-webview_player.go                AudioPlayer 구현: 메인 <audio> 또는 영상 창으로 재생 명령 전달
-video_window.go / video_app.go   화면 보기: 같은 실행파일을 영상 창 모드(SMPX_VIDEO_WINDOW)로 실행, stdin / fd 3 JSON 통신
-tray*.go / tray_darwin.m         메뉴바(macOS NSStatusItem) / 트레이(Linux StatusNotifierItem)
+app.go / main.go                 Wails bindings (UI only calls the service)
+webview_player.go                AudioPlayer: sends playback commands to the main <audio> or the video window
+video_window.go / video_app.go   Video window: runs the same binary in video mode (SMPX_VIDEO_WINDOW), JSON over stdin / fd 3
+tray*.go / tray_darwin.m         Menu bar (macOS NSStatusItem) / tray (Linux StatusNotifierItem)
 frontend/                        Svelte UI, <audio>, MediaSession
 internal/
   domain/                        LoopMode, PlaybackState, PlaylistItem
   application/
-    player/                      AudioPlayer 포트
-    youtube/                     Resolver 포트 (제목 / 스트림 URL)
-    playlist/                    Repository 포트
-    service/                     PlayerService (SMP PlayerFacade + UseCases), PlayerState
+    player/                      AudioPlayer port
+    youtube/                     Resolver port (title / stream URL)
+    playlist/                    Repository port
+    service/                     PlayerService (SMP PlayerFacade + use cases), PlayerState
   infrastructure/
-    ytdlp/                       yt-dlp 클라이언트(TTL 캐시, 중복 요청 방지, 스트림 403 확인 후 클라이언트 우회) + Manager(설치 / 업데이트)
-    streamproxy/                 127.0.0.1 스트림 프록시: WebView 의 큰 범위 요청을 2MB 조각으로 나눠 YouTube 403 회피
-    storage/                     playlist.json 저장소
-    update/                      GitHub Release 업데이트 확인
+    ytdlp/                       yt-dlp client (TTL cache, request dedup, 403 probe + client fallback) + Manager (install / update)
+    streamproxy/                 127.0.0.1 stream proxy: splits WebView's large range requests into 2MB chunks to avoid YouTube 403
+    storage/                     playlist.json repository
+    update/                      GitHub Release update check
 ```
 
 ```
-재생 요청 → PlayerService → yt-dlp(스트림 URL) → "audio:command" 이벤트 → <audio>.play()
-<audio> ended / error / pause → App.AudioEnded / AudioFailed / AudioPaused → PlayerService (루프 모드 처리)
+Play → PlayerService → yt-dlp (stream URL) → "audio:command" event → <audio>.play()
+<audio> ended / error / pause → App.AudioEnded / AudioFailed / AudioPaused → PlayerService (loop mode handling)
 ```
 
-### yt-dlp 관리 (`internal/infrastructure/ytdlp/manager.go`)
+### yt-dlp management (`internal/infrastructure/ytdlp/manager.go`)
 
-- 위치: `~/Library/Application Support/smpx/bin/yt-dlp` (Linux: `~/.config/smpx/bin/yt-dlp`)
-- 최초 실행: GitHub 최신 릴리스의 단일 실행파일(`yt-dlp_macos` / `yt-dlp_linux`) 다운로드 + `SHA2-256SUMS` 검증
-- 하루 한 번 `yt-dlp -U` 자동 업데이트, 재생 실패 시 즉시 업데이트 후 1회 재시도 (YouTube 변경 대응)
-- 다운로드할 수 없으면 PATH / Homebrew 의 yt-dlp 사용
+- Location: `~/Library/Application Support/smpx/bin/yt-dlp` (Linux: `~/.config/smpx/bin/yt-dlp`)
+- First launch: downloads the standalone binary (`yt-dlp_macos` / `yt-dlp_linux`) from the latest GitHub release and verifies it against `SHA2-256SUMS`
+- Runs `yt-dlp -U` once a day; on a playback failure it updates immediately and retries once (keeps up with YouTube changes)
+- Falls back to `yt-dlp` from PATH / Homebrew if the download is not possible
 
 ---
 
-## SMP 기능 이식 현황
+## SMP feature port
 
-| SMP 기능 | SMPX 구현 | 상태 |
+| SMP feature | SMPX implementation | Status |
 |---|---|---|
-| 플레이리스트 추가 (제목 자동 조회, 중복 방지) / 삭제 | `PlayerService.AddTrack / RemoveTrack` | ✅ |
-| 플레이리스트 저장 / 로드 (`playlist.json`, 같은 포맷) | `storage` — `UserConfigDir/smpx/playlist.json`, 원자적 쓰기 | ✅ |
-| 재생 / 일시정지 / 재개 / 정지 | `PlayerService` + WebView `<audio>` | ✅ |
-| 이전곡 / 다음곡 | `Previous / Next` | ✅ |
-| 루프 모드 (1회 / 전체 / 1곡) | `CycleLoopMode`, 곡 종료 시 자동 다음곡 | ✅ |
-| 볼륨 조절 | `SetVolume` (0~100, 다음 곡에도 유지) | ✅ |
-| 스트림 URL 캐시 (TTL 30분) + 중복 요청 방지 | `ytdlp` | ✅ |
-| 재생곡 알림 / 창 제목 표시 | Wails 알림 API (macOS 는 번들 앱에서만) | ✅ |
-| 미디어 키 (재생/일시정지, 이전, 다음) | MediaSession — macOS '지금 재생 중' / 미디어 키 / AirPods | ✅ |
-| 키보드 단축키 | 메인 창: Space 재생/일시정지, ← → 이전/다음, ↑ ↓ 볼륨, V 화면 보기 · 영상 창: Enter 전체 화면 전환, Esc 전체 화면 해제, Space 누르는 동안 2배속, 클릭 재생/일시정지 | ✅ |
-| 업데이트 확인 | GitHub Release 확인 + 다운로드 링크 (자동 설치는 미지원) | ✅ |
-| 재생목록 URL 가져오기 | `list=` URL 이면 목록 전체 추가 (최대 500곡, 비공개/삭제 영상 제외, 영상 ID 기준 중복 제외) | ✅ |
-| 화면 보기 (별도 창) | '📺 화면 보기' 체크 / V 키 → 영상 창(자식 프로세스, Dock 아이콘 없음), 영상 비율에 맞춰 창 크기 조정, 켜고 끌 때 이어서 재생 | ✅ |
-| 시스템 트레이 | macOS 메뉴바(NSStatusItem) / Linux 트레이(StatusNotifierItem): 재생·이전·다음·열기·종료, macOS 는 창을 닫으면 메뉴바로 숨김 | ✅ |
-| 볼륨키 연타로 이전/다음곡 (MediaKeyPatternDetector) | MediaSession 으로 대체 — AirPods 두 번 누르기 다음곡 / 세 번 이전곡, 미디어 키 (전역 키 후킹·권한 요청 없음) | ✅ |
+| Add (auto title, no duplicates) / remove playlist items | `PlayerService.AddTrack / RemoveTrack` | ✅ |
+| Save / load playlist (`playlist.json`, same format) | `storage` — `UserConfigDir/smpx/playlist.json`, atomic writes | ✅ |
+| Play / pause / resume / stop | `PlayerService` + WebView `<audio>` | ✅ |
+| Previous / next track | `Previous / Next` | ✅ |
+| Loop mode (once / all / single) | `CycleLoopMode`, auto-advance when a track ends | ✅ |
+| Volume | `SetVolume` (0–100, kept for the next track) | ✅ |
+| Stream URL cache (30 min TTL) + request dedup | `ytdlp` | ✅ |
+| Now-playing notification / window title | Wails notifications (macOS: bundled app only) | ✅ |
+| Media keys (play/pause, previous, next) | MediaSession — macOS Now Playing / media keys / AirPods | ✅ |
+| Keyboard shortcuts | Main window: Space play/pause, ← → previous/next, ↑ ↓ volume, V video window · Video window: Enter toggles full screen, Esc exits full screen, hold Space for 2× speed, click to play/pause | ✅ |
+| Update check | GitHub Release check + download link (no auto-install) | ✅ |
+| Import YouTube playlist URLs | `list=` URLs add the whole list (up to 500, skips private/deleted videos, dedup by video ID) | ✅ |
+| Video window | '📺 화면 보기' checkbox / V key → video window (child process, no Dock icon), sized to the video's aspect ratio, resumes position when toggled | ✅ |
+| System tray | macOS menu bar (NSStatusItem) / Linux tray (StatusNotifierItem): play, previous, next, open, quit; on macOS closing the window hides it to the menu bar | ✅ |
+| Volume-key double press for previous/next (MediaKeyPatternDetector) | Replaced by MediaSession — AirPods double press = next / triple press = previous, media keys (no global key hook, no permission prompt) | ✅ |
 
 ---
 
-## 검증 결과 (2026-11-01)
+## Verification (2026-11-01)
 
-| 항목 | 결과 |
+| Item | Result |
 |---|---|
 | `go build ./...`, `go vet ./...` (darwin / linux) | ✅ |
-| `go test -race ./...` — service · ytdlp(Manager 포함) · storage · update | ✅ |
-| 앱 실행 → 재생(Space) → WebView 오디오 출력 → 곡 종료 후 자동 다음곡(사용자 입력 없이) → 마지막 곡 후 정지 | ✅ |
-| 오디오 형식: opus 는 길이 정상, m4a 는 WKWebView 에서 길이 2배 → opus 우선 | ✅ |
-| 화면 보기: 영상 창 표시 → 영상+소리 재생 → 영상 비율로 창 크기 맞춤 → 체크 해제 / 창 닫기 시 오디오로 이어서 재생 | ✅ |
-| 재생목록 URL(40곡) 붙여넣기 → 39곡 추가 + 기존 1곡 중복 제외, 목록 / playlist.json 반영 | ✅ |
-| yt-dlp 최초 자동 설치 (다운로드 + SHA-256 검증) | ✅ CI: 설치한 deb 앱을 xvfb 에서 실행해 확인 |
-| 스트림 403 대응: 큰 범위 요청 분할(프록시) + 막힌 스트림은 android_vr 클라이언트로 재시도 → 실패하던 영상의 오디오 / 화면 보기 재생 확인 | ✅ |
-| 일부 영상은 모든 클라이언트에서 403 | ⚠️ "YouTube가 이 영상의 스트림을 차단했습니다" 표시 |
-| Linux: deb 빌드 → `apt install` → 앱 실행 | ✅ CI (Ubuntu 22.04) |
-| macOS: 메뉴바 메뉴(재생·다음·열기), 창 닫기 → 메뉴바로 숨김 → 다시 열기, 영상 창 Dock 아이콘 없음 | ✅ |
+| `go test -race ./...` — service · ytdlp (incl. Manager) · storage · update · streamproxy | ✅ |
+| Launch → play (Space) → WebView audio → auto-advance without user input → stop after the last track | ✅ |
+| Audio format: opus reports the right duration, m4a reports 2× duration in WKWebView → prefer opus | ✅ |
+| Video window: open → video + audio → window fitted to the video → uncheck / close → continues as audio | ✅ |
+| Paste a 40-track playlist URL → 39 added + 1 existing skipped, list / playlist.json updated | ✅ |
+| yt-dlp first-run install (download + SHA-256 check) | ✅ CI: installed deb app run under xvfb |
+| Stream 403 handling: chunked range proxy + android_vr client fallback → previously failing video plays (audio / video window) | ✅ |
+| Some videos return 403 for every client | ⚠️ Shows "YouTube가 이 영상의 스트림을 차단했습니다" |
+| Linux: build deb → `apt install` → run app | ✅ CI (Ubuntu 22.04) |
+| macOS: menu bar (play, next, open), close window → hidden to menu bar → reopen, no Dock icon for the video window | ✅ |
 
 ---
 
-## 개발
+## Development
 
-필요: Go 1.25+, Node.js, [Wails CLI](https://wails.io/docs/gettingstarted/installation) (yt-dlp 는 앱이 자동 설치)
+Requires Go 1.26+, Node.js, [Wails CLI](https://wails.io/docs/gettingstarted/installation) (the app installs `yt-dlp` itself)
 
 ```bash
-wails dev      # 개발 모드
-wails build    # 배포용 빌드 (build/bin/smpx.app)
+wails dev      # development mode
+wails build    # release build (build/bin/smpx.app)
 go test ./...
 ```
 
-> ExFAT 등 심볼릭 링크를 지원하지 않는 드라이브에서도 빌드되도록 `frontend/package.json` 스크립트는 `node node_modules/vite/bin/vite.js` 를 직접 실행합니다.
-> `frontend/public/.gitkeep` 은 빌드 시 `frontend/dist/.gitkeep` 으로 복사되어 go:embed 디렉토리를 유지합니다.
+> `frontend/package.json` scripts run `node node_modules/vite/bin/vite.js` directly so builds also work on drives without symlink support (e.g. ExFAT).
+> `frontend/public/.gitkeep` is copied to `frontend/dist/.gitkeep` on build to keep the go:embed directory.
 
-## 라이선스
+## License
 
 MIT License

@@ -1,100 +1,120 @@
-# 릴리스 / 설치 프로그램
+# Release / Installers
 
-## 결과물
+**English** | [한국어](RELEASE_ko.md)
 
-`v*` 태그를 push 하면 [Release 워크플로](../.github/workflows/release.yml)가 아래 파일을 만들어 GitHub Release 에 올립니다.
+## Artifacts
 
-| 파일 | 대상 | 설치 |
+Pushing a `v*` tag makes the [Release workflow](../.github/workflows/release.yml) build these files and attach them to a GitHub Release.
+
+| File | Target | Install |
 |---|---|---|
-| `SMPX_<버전>_macos_universal.dmg` | macOS 11+ (Intel / Apple Silicon) | 열어서 `SMPX` 를 `Applications` 로 드래그 |
-| `smpx_<버전>_linux_amd64.deb` | Ubuntu 22.04+ / Debian 12+ | `sudo apt install ./smpx_<버전>_linux_amd64.deb` |
-| `smpx_<버전>_linux_amd64.tar.gz` | 기타 배포판 | 압축 해제 후 `smpx` 실행 (GTK3, WebKitGTK 4.1, GStreamer 필요) |
-| `SHA256SUMS` | 무결성 확인 | `shasum -a 256 -c SHA256SUMS` |
+| `SMPX_<version>_macos_universal.dmg` | macOS 11+ (Intel / Apple Silicon) | Open it and drag `SMPX` to `Applications` |
+| `smpx_<version>_linux_amd64.deb` | Ubuntu 22.04+ / Debian 12+ | `sudo apt install ./smpx_<version>_linux_amd64.deb` |
+| `smpx_<version>_linux_amd64.tar.gz` | Other distributions | Extract and run `smpx` (requires GTK3, WebKitGTK 4.1, GStreamer) |
+| `SHA256SUMS` | Integrity check | `shasum -a 256 -c SHA256SUMS` |
 
-설치 후 별도 설정은 필요 없습니다. `yt-dlp` 는 최초 실행 시 앱이 내려받고(SHA-256 검증) 하루 한 번 자동 업데이트합니다.
-`.deb` 는 실행에 필요한 GTK / WebKitGTK / GStreamer 코덱을 의존성으로 선언해 apt 가 함께 설치합니다.
+No setup is needed after installing. The app downloads `yt-dlp` on first launch (SHA-256 verified) and updates it daily.
+The `.deb` declares GTK / WebKitGTK / GStreamer codecs as dependencies, so apt installs them too.
 
-## 릴리스 절차
+## Release process
 
-1. 작업 브랜치 → `dev` PR 병합 → `dev` → `main` 병합
-2. `main` 에서 `./release.sh` 실행 → 버전 입력 → 태그 push
-3. [Actions](https://github.com/minias/smpx/actions/workflows/release.yml) 에서 빌드 확인 → Release 자동 생성
+1. Merge work branches → `dev` via PR, then `dev` → `main`
+2. On `main`, run `./release.sh` → enter the version → the tag is pushed
+3. Watch the build in [Actions](https://github.com/minias/smpx/actions/workflows/release.yml) → the Release is created automatically
 
-패키징 관련 파일(`scripts/`, `build/`, `wails.json`, 워크플로)을 바꾼 PR 은 Release 없이 빌드만 수행해 artifact 로 결과물을 확인할 수 있습니다.
+PRs that change packaging files (`scripts/`, `build/`, `wails.json`, the workflow) only build (no Release), and the outputs are available as artifacts.
 
-## macOS 서명 / 공증 설정
+Release tags (`v*`) are protected by a ruleset: they cannot be deleted or moved.
 
-서명하지 않은 dmg 는 최초 실행 시 macOS 가 "확인되지 않은 개발자" 경고를 띄웁니다.
-아래 GitHub Secrets 를 등록하면 워크플로가 Developer ID 로 서명하고 공증(notarization)까지 수행해 경고 없이 열립니다.
+## First launch on macOS
 
-> ⚠️ 이 저장소는 공개 저장소입니다. 인증서, 암호, Apple ID, Team ID 는 **절대 파일로 커밋하지 말고** Secrets 에만 등록하세요.
+macOS blocks apps that are not notarized the first time they are opened on another Mac. Allow it once and it opens normally afterwards.
 
-| Secret | 값 |
+1. Move `SMPX` to `Applications` and open it → when "cannot be opened" appears, click **Done**
+2. **System Settings → Privacy & Security** → next to "SMPX was blocked", click **Open Anyway**
+3. Open it again → **Open**
+
+Or run once in Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/smpx.app
+```
+
+## macOS signing / notarization
+
+| Certificate | Cost | Result |
+|---|---|---|
+| None | Free | Ad-hoc signature, must be allowed once on other Macs |
+| **Apple Development** (in use) | Free (Apple ID) | Developer signature, no notarization → must be allowed once on other Macs |
+| Developer ID Application | Apple Developer Program, $99/year | Signed + notarized → opens without warnings |
+
+The workflow prefers a Developer ID Application certificate and falls back to Apple Development (no notarization).
+
+> ⚠️ This is a public repository. **Never commit** certificates, passwords, Apple ID or Team ID — register them as Secrets only.
+
+| Secret | Value |
 |---|---|
-| `MACOS_CERT_P12_BASE64` | Developer ID Application 인증서(.p12)를 base64 로 인코딩한 값 |
-| `MACOS_CERT_PASSWORD` | .p12 내보낼 때 지정한 암호 |
-| `APPLE_ID` | Apple Developer 계정 이메일 |
+| `MACOS_CERT_P12_BASE64` | Signing certificate (.p12 — Apple Development or Developer ID Application), base64-encoded |
+| `MACOS_CERT_PASSWORD` | Password set when exporting the .p12 |
+| `APPLE_ID` | Apple Developer account email |
 | `APPLE_TEAM_ID` | Team ID (developer.apple.com → Membership) |
-| `APPLE_APP_PASSWORD` | appleid.apple.com 에서 만든 앱 암호 |
+| `APPLE_APP_PASSWORD` | App-specific password created at appleid.apple.com |
 
-### 1. Developer ID Application 인증서 만들기
+### 1. Create a certificate
 
-> Xcode 에서 기본으로 만들어지는 **Apple Development** 인증서는 개발용이라 배포용 서명에 쓸 수 없습니다.
-> 앱 스토어 밖에서 배포하려면 **Developer ID Application** 인증서가 필요합니다. (Apple Developer Program 계정 소유자만 생성 가능)
-
-1. Xcode → **설정(Settings)** → **Accounts** → 계정 선택 → 팀 선택 → **Manage Certificates…**
-2. 왼쪽 아래 **+** → **Developer ID Application** 선택
-3. 확인: 터미널에서 아래 명령에 `Developer ID Application: …` 이 보이면 성공
+1. Xcode → **Settings** → **Accounts** → select the account → select the team → **Manage Certificates…**
+2. **+** at the bottom left → **Apple Development** (free) or **Developer ID Application** (paid Program)
+3. Check: the certificate name appears in
 
 ```bash
 security find-identity -v -p codesigning
 ```
 
-### 2. 인증서를 .p12 파일로 내보내기
+### 2. Export the certificate as .p12
 
-1. **키체인 접근(Keychain Access)** 앱 실행 (Spotlight 에서 "키체인")
-2. 왼쪽 **기본 키체인 → 로그인** 선택 → 위쪽 탭에서 **내 인증서** 선택
-3. `Developer ID Application: <이름> (<Team ID>)` 항목을 우클릭 → **"…" 내보내기**
-   (항목 왼쪽 ▶ 를 펼쳐 개인 키가 함께 있는지 확인 — 개인 키가 없으면 내보낼 수 없음)
-4. 파일 포맷 **개인 정보 교환(.p12)** → 바탕화면에 `DeveloperID.p12` 로 저장
-5. 내보내기 **암호**를 새로 지정 → 이 값이 `MACOS_CERT_PASSWORD`
-6. Mac 로그인 암호를 물으면 입력 (키체인 접근 허용)
+1. Open **Keychain Access** (Spotlight: "Keychain")
+2. Left: **Default Keychains → login** → top tab **My Certificates**
+3. Right-click `Apple Development: …` (or `Developer ID Application: …`) → **Export "…"**
+   (expand ▶ to make sure the private key is included — it cannot be exported without it)
+4. File format **Personal Information Exchange (.p12)** → save as `DeveloperID.p12` on the Desktop
+5. Set an export **password** → this is `MACOS_CERT_PASSWORD`
+6. Enter your Mac login password if asked (allow keychain access)
 
-### 3. GitHub Secrets 등록
+### 3. Register GitHub Secrets
 
-> 암호 / 인증서 값은 채팅이나 파일에 붙여넣지 말고, **본인 터미널(터미널.app)** 에서 직접 입력하세요.
-> `gh secret set` 은 값을 입력받는 프롬프트를 띄우며, 입력 값은 화면에 표시되지 않습니다.
+> Do not paste passwords or certificate values into chats or files — type them in **your own Terminal**.
+> `gh secret set` prompts for the value and does not echo it.
 
-준비할 값:
+`APPLE_ID` / `APPLE_TEAM_ID` / `APPLE_APP_PASSWORD` are only needed for **notarization with Developer ID**. With an Apple Development certificate, register just the certificate and its password (skip the password if you exported with an empty one).
 
-| Secret | 확인 위치 |
+| Secret | Where to find it |
 |---|---|
-| `APPLE_ID` | Apple Developer 계정 이메일 |
-| `APPLE_TEAM_ID` | developer.apple.com → Account → **Membership details** → Team ID (10자리) |
-| `APPLE_APP_PASSWORD` | appleid.apple.com → **로그인 및 보안** → **앱 암호** → 생성 (예: `smpx-notary`) |
+| `APPLE_ID` | Apple Developer account email |
+| `APPLE_TEAM_ID` | developer.apple.com → Account → **Membership details** → Team ID (10 characters) |
+| `APPLE_APP_PASSWORD` | appleid.apple.com → **Sign-In and Security** → **App-Specific Passwords** → generate (e.g. `smpx-notary`) |
 
 ```bash
-# 인증서 (.p12 → base64)
+# certificate (.p12 → base64)
 base64 -i ~/Desktop/DeveloperID.p12 | gh secret set MACOS_CERT_P12_BASE64 --repo minias/smpx
 
-# 아래는 실행하면 값 입력 프롬프트가 뜸
+# each of these prompts for the value
 gh secret set MACOS_CERT_PASSWORD --repo minias/smpx
 gh secret set APPLE_ID --repo minias/smpx
 gh secret set APPLE_TEAM_ID --repo minias/smpx
 gh secret set APPLE_APP_PASSWORD --repo minias/smpx
 
-# 등록 확인 (값은 보이지 않고 이름만 표시)
+# check (names only, values are hidden)
 gh secret list --repo minias/smpx
 
-# 내보낸 파일 삭제
+# delete the exported file
 rm ~/Desktop/DeveloperID.p12
 ```
 
-등록 후 다음 태그 릴리스부터 dmg 가 서명 · 공증되어 경고 없이 열립니다.
+From the next tag release on, the dmg is signed. (With Developer ID + Apple account secrets it is also notarized and opens without warnings.)
 
-## 로컬 패키징
+## Local packaging
 
 ```bash
-scripts/package-macos.sh 0.2.0   # macOS: dist/SMPX_0.2.0_macos_universal.dmg (서명 변수 없으면 서명 없음)
-scripts/package-linux.sh 0.2.0   # Linux(Ubuntu 22.04+): dist/*.deb, dist/*.tar.gz
+scripts/package-macos.sh 0.2.0   # macOS: dist/SMPX_0.2.0_macos_universal.dmg (unsigned without signing variables)
+scripts/package-linux.sh 0.2.0   # Linux (Ubuntu 22.04+): dist/*.deb, dist/*.tar.gz
 ```
