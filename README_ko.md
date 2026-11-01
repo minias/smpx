@@ -34,7 +34,7 @@ YouTube 링크를 플레이리스트에 추가하면 `yt-dlp` 로 오디오 스�
 
 | 구분 | SMP (원본) | SMPX |
 |---|---|---|
-| 언어 / UI | C# .NET, WinForms | Go 1.25, Wails v2.12, Svelte 3 |
+| 언어 / UI | C# .NET, WinForms | Go 1.26, Wails v2.17, Svelte 3 |
 | 오디오 | NAudio (MediaFoundation) | WebView HTML5 `<audio>` (opus / m4a) |
 | 스트림 추출 | yt-dlp.exe (동봉) | yt-dlp (최초 실행 시 자동 설치 + 자동 업데이트) |
 | 미디어 키 | 키보드 훅 | MediaSession (macOS '지금 재생 중', 미디어 키, AirPods) |
@@ -123,7 +123,7 @@ internal/
 
 ## 개발
 
-필요: Go 1.25+, Node.js, [Wails CLI](https://wails.io/docs/gettingstarted/installation) (yt-dlp 는 앱이 자동 설치)
+필요: Go 1.26+, Node.js, [Wails CLI](https://wails.io/docs/gettingstarted/installation) (yt-dlp 는 앱이 자동 설치)
 
 ```bash
 wails dev      # 개발 모드
