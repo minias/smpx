@@ -24,3 +24,7 @@ cd frontend && npm run build
 ## Security
 
 Report vulnerabilities through [SECURITY.md](SECURITY.md), not as public issues.
+
+## Code of Conduct
+
+Everyone participating in this project is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
