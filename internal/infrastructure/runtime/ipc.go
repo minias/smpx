@@ -9,6 +9,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// macOS unix socket 경로 길이 제한(104 bytes) 여유값
+const maxSocketPathLen = 100
+
+// CreateIPCPath mpv IPC 경로 생성
 func CreateIPCPath(name string) string {
 	id := uuid.NewString()
 
@@ -20,9 +24,12 @@ func CreateIPCPath(name string) string {
 
 	default:
 		// macOS / Linux Unix Socket
-		return filepath.Join(
-			os.TempDir(),
-			name+"-"+id+".sock",
-		)
+		filename := name + "-" + id + ".sock"
+		p := filepath.Join(os.TempDir(), filename)
+		if len(p) > maxSocketPathLen {
+			// 경로가 길면 /tmp 사용
+			p = filepath.Join("/tmp", filename)
+		}
+		return p
 	}
 }

@@ -26,7 +26,30 @@ go.work.sum
 
 # env file
 .env
+.env.*
 
 # Editor/IDE
 # .idea/
-# .vscode/
+.vscode/
+
+# Node
+node_modules/
+
+# Wails / 빌드 산출물
+build/bin/
+/smpx
+*.app
+*.syso
+*.pdb
+*.dmg
+*.msi
+frontend/package.json.md5
+
+# 프론트엔드 빌드 결과 (go:embed 용 디렉토리만 유지)
+frontend/dist/*
+!frontend/dist/.gitkeep
+
+# OS
+._*
+.DS_Store
+Thumbs.db
