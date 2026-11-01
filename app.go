@@ -53,6 +53,7 @@ func NewApp(
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.audio.setContext(ctx)
+	a.audio.setVideoHandlers(a.onVideoCommand, a.onVideoClosed)
 
 	a.initNotifications()
 
@@ -91,6 +92,7 @@ func (a *App) prepareYtdlp(ctx context.Context) {
 
 func (a *App) shutdown(ctx context.Context) {
 	a.playerService.Shutdown()
+	a.audio.closeVideo()
 
 	if a.notificationsEnabled() {
 		runtime.CleanupNotifications(ctx)
@@ -219,6 +221,47 @@ func (a *App) AudioEnded(seq uint64) {
 // AudioFailed 스트림 재생 실패 (네트워크 / 형식 / 만료 등)
 func (a *App) AudioFailed(seq uint64, message string) {
 	a.audio.ended(seq, errors.New(message))
+}
+
+// AudioProgress 재생 위치 (화면 보기 전환 시 이어서 재생)
+func (a *App) AudioProgress(seq uint64, t float64) {
+	a.audio.progress(seq, t)
+}
+
+// SetShowVideo 화면 보기 (별도 창) 켜기 / 끄기
+func (a *App) SetShowVideo(on bool) error {
+	return a.playerService.SetShowVideo(on)
+}
+
+// onVideoCommand 영상 창의 미디어 키 / 일시정지 상태
+func (a *App) onVideoCommand(action string) {
+	var err error
+
+	switch action {
+	case "playpause":
+		err = a.playerService.PlayPause()
+	case "next":
+		err = a.playerService.Next()
+	case "prev":
+		err = a.playerService.Previous()
+	case "stop":
+		err = a.Stop()
+	case "sync-paused":
+		a.playerService.SyncPaused(true)
+	case "sync-playing":
+		a.playerService.SyncPaused(false)
+	}
+
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "player:error", err.Error())
+	}
+}
+
+// onVideoClosed 사용자가 영상 창을 닫으면 오디오 전용으로 이어서 재생
+func (a *App) onVideoClosed() {
+	if err := a.playerService.SetShowVideo(false); err != nil {
+		runtime.EventsEmit(a.ctx, "player:error", err.Error())
+	}
 }
 
 // AudioPaused OS / 브라우저가 일시정지·재개한 경우 (미디어 키는 MediaSession 으로 직접 호출)

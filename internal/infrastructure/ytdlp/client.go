@@ -34,6 +34,9 @@ var unavailableTitles = map[string]bool{
 // opus(webm) 우선: YouTube DASH m4a 는 WKWebView 에서 길이가 2배로 잡혀 곡 종료가 늦어짐
 const audioFormat = "bestaudio[acodec=opus]/bestaudio[ext=m4a]/bestaudio"
 
+// 화면 보기용: H.264 영상(최대 1080p) + opus 오디오, 없으면 소리 포함 단일 스트림
+const videoFormat = "bv*[vcodec^=avc1][height<=1080]+ba[acodec=opus]/bv*[vcodec^=avc1][height<=1080]+ba/b[vcodec^=avc1]/b"
+
 var _ youtube.Resolver = (*Client)(nil)
 
 // runFunc 외부 프로세스 실행 함수 (테스트 주입용)
@@ -117,6 +120,51 @@ func (c *Client) StreamURL(ctx context.Context, url string) (string, error) {
 		c.streams.set(url, line)
 		return line, nil
 	})
+}
+
+// Streams 재생 스트림 (video=false 면 오디오만)
+func (c *Client) Streams(ctx context.Context, url string, video bool) (domain.Stream, error) {
+	if !video {
+		audio, err := c.StreamURL(ctx, url)
+		return domain.Stream{AudioURL: audio}, err
+	}
+
+	url, err := validateURL(url)
+	if err != nil {
+		return domain.Stream{}, err
+	}
+
+	key := "video\x00" + url
+	joined, ok := c.streams.get(key)
+	if !ok {
+		joined, err = c.flight.do(ctx, key, func() (string, error) {
+			if v, ok := c.streams.get(key); ok {
+				return v, nil
+			}
+			out, err := c.exec(ctx, "-f", videoFormat, "--no-playlist", "--no-warnings", "-g", "--", url)
+			if err != nil {
+				return "", err
+			}
+			lines := nonEmptyLines(out)
+			if len(lines) == 0 {
+				return "", errors.New("yt-dlp: empty stream url")
+			}
+			v := strings.Join(lines, "\n")
+			c.streams.set(key, v)
+			return v, nil
+		})
+		if err != nil {
+			return domain.Stream{}, err
+		}
+	}
+
+	// -g 출력 순서: 영상, 오디오 (단일 스트림이면 한 줄)
+	lines := strings.Split(joined, "\n")
+	st := domain.Stream{VideoURL: lines[0]}
+	if len(lines) > 1 {
+		st.AudioURL = lines[1]
+	}
+	return st, nil
 }
 
 // Expand URL 을 플레이리스트 항목으로 변환

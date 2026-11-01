@@ -5,6 +5,7 @@
 		AudioEnded,
 		AudioFailed,
 		AudioPaused,
+		AudioProgress,
 		CheckForUpdate,
 		CycleLoopMode,
 		GetState,
@@ -14,6 +15,7 @@
 		PlayPause,
 		Previous,
 		RemoveTrack,
+		SetShowVideo,
 		SetVolume,
 		Stop,
 		Version,
@@ -39,6 +41,7 @@
 		state: "stopped",
 		loopMode: "none",
 		volume: 50,
+		showVideo: false,
 	};
 
 	let url = "";
@@ -56,6 +59,7 @@
 	// 실제 재생은 <audio>, 재생 상태는 Go(PlayerService)가 관리
 	let audio;
 	let audioSeq = 0; // 0 = 정지 (이전 곡 이벤트 무시)
+	let lastProgress = 0;
 
 	// 슬라이더 조작 중(디바운스 대기)에는 서버 상태로 덮어쓰지 않음
 	let volume = 50;
@@ -172,6 +176,13 @@
 			document.activeElement.blur();
 		}
 
+		// 한글 입력 상태에서도 동작하도록 물리 키(code)로 판별
+		if (e.code === "KeyV") {
+			e.preventDefault();
+			toggleVideo();
+			return;
+		}
+
 		switch (e.key) {
 			case " ":
 				e.preventDefault();
@@ -208,7 +219,7 @@
 		audio.play().catch((e) => {
 			// 다음 곡 로드로 중단된 경우는 정상
 			if (e?.name !== "AbortError" && seq === audioSeq) {
-				AudioFailed(seq, `재생 실패: ${e?.message ?? e}`);
+				AudioFailed(seq, String(e?.message ?? e));
 			}
 		});
 	}
@@ -221,6 +232,8 @@
 				audioSeq = cmd.seq;
 				audio.src = cmd.url;
 				audio.volume = cmd.volume / 100;
+				if (cmd.startAt > 0) audio.currentTime = cmd.startAt;
+				lastProgress = cmd.startAt || 0;
 				playAudio(cmd.seq);
 				break;
 			case "pause":
@@ -267,6 +280,16 @@
 	function onAudioPlaying() {
 		if (audioSeq) AudioPaused(audioSeq, false);
 	}
+
+	// 1초마다 재생 위치 통보 (화면 보기 전환 시 이어서 재생)
+	function onAudioTimeUpdate() {
+		if (audioSeq && Math.abs(audio.currentTime - lastProgress) >= 1) {
+			lastProgress = audio.currentTime;
+			AudioProgress(audioSeq, audio.currentTime);
+		}
+	}
+
+	const toggleVideo = () => run(() => SetShowVideo(!player.showVideo));
 
 	// ---- MediaSession: macOS '지금 재생 중', 미디어 키, AirPods ----
 
@@ -339,6 +362,7 @@
 	on:error={onAudioError}
 	on:pause={onAudioPause}
 	on:playing={onAudioPlaying}
+	on:timeupdate={onAudioTimeUpdate}
 />
 
 <main>
@@ -415,6 +439,10 @@
 		<button class="loop" class:active={player.loopMode !== "none"} on:click={cycleLoop} title="반복 모드">
 			{LOOP_LABELS[player.loopMode] ?? player.loopMode}
 		</button>
+		<label class="check" title="체크하면 영상을 별도 창으로 보여줍니다 (V)">
+			<input type="checkbox" checked={player.showVideo} on:change={toggleVideo} on:keydown|stopPropagation />
+			📺 화면 보기
+		</label>
 		<button on:click={() => removeTrack(selected)} disabled={selected < 0} title="선택 항목 삭제 (Delete)">
 			🗑️ 삭제
 		</button>
@@ -478,6 +506,23 @@
 
 	button:hover:not(:disabled) {
 		border-color: var(--accent);
+	}
+
+	.check {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		cursor: pointer;
+		user-select: none;
+		white-space: nowrap;
+	}
+
+	.check input {
+		width: 16px;
+		height: 16px;
+		margin: 0;
+		accent-color: var(--accent, #4f8cff);
+		cursor: pointer;
 	}
 
 	.notice {
