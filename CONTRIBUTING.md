@@ -1,15 +1,17 @@
 # CONTRIBUTING
 
-## 브랜치 전략
+**English** | [한국어](CONTRIBUTING_ko.md)
 
-- `main`: 배포 브랜치 (보호 규칙 적용, 강제 push 금지, CodeQL 통과 필요)
-- `dev`: 통합 브랜치
-- 작업은 항상 `dev` 에서 새 브랜치(`feature/*`, `fix/*`, `chore/*`)를 만들어 진행하고, 검증 후 PR 로 `dev` 에 병합합니다.
+## Branch strategy
 
-## 커밋 / PR
+- `main`: release branch (protected — no force push, CodeQL must pass)
+- `dev`: integration branch
+- Always branch off `dev` (`feature/*`, `fix/*`, `chore/*`, `docs/*`), verify, then open a PR into `dev`.
 
-- 커밋 메시지는 `feat:`, `fix:`, `chore:`, `docs:`, `deps:` 접두어를 사용합니다.
-- PR 전에 다음을 통과해야 합니다.
+## Commits / PRs
+
+- Prefix commit messages with `feat:`, `fix:`, `chore:`, `docs:` or `deps:`.
+- Before opening a PR, make sure these pass:
 
 ```bash
 go vet ./...
@@ -17,6 +19,8 @@ go test ./...
 cd frontend && npm run build
 ```
 
-## 보안
+- This is a public repository: never commit secrets (tokens, keys, passwords, certificates), personal data or local paths. CI runs a gitleaks scan on every PR.
 
-취약점은 이슈가 아닌 [SECURITY.md](SECURITY.md) 의 절차로 제보해 주세요.
+## Security
+
+Report vulnerabilities through [SECURITY.md](SECURITY.md), not as public issues.
