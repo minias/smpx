@@ -1,0 +1,13 @@
+# 모든 텍스트 파일은 저장소/작업폴더 모두 LF 로 고정
+* text=auto eol=lf
+
+# Windows 전용 스크립트는 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 바이너리
+*.png binary
+*.ico binary
+*.icns binary
+*.woff2 binary
+resources/bin/** binary
