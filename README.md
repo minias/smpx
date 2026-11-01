@@ -7,7 +7,7 @@ Windows 는 SMP 를 사용합니다.
 YouTube 링크를 플레이리스트에 추가하면 `yt-dlp` 로 오디오 스트림 주소를 추출하고, 앱 화면(WebView)의 HTML5 오디오로 재생합니다.
 **사용자가 별도로 설치할 것이 없습니다.** `yt-dlp` 는 최초 실행 시 앱이 내려받고 하루 한 번 자동 업데이트합니다.
 
-> 상태: ✅ SMP 기능 이식 + 무설정 배포 + 화면 보기 + 재생목록 가져오기 (2026-11-01)
+> 상태: ✅ SMP 기능 이식 완료 — 무설정 설치(macOS dmg / Linux deb), 화면 보기, 재생목록 가져오기, 메뉴바·트레이 (2026-11-01)
 
 ---
 
@@ -46,6 +46,7 @@ SMP 의 클린 아키텍처 구조(UI → UseCase → Domain / Infrastructure)�
 app.go / main.go                 Wails 바인딩 (UI → Service 호출만 담당)
 webview_player.go                AudioPlayer 구현: 메인 <audio> 또는 영상 창으로 재생 명령 전달
 video_window.go / video_app.go   화면 보기: 같은 실행파일을 영상 창 모드(SMPX_VIDEO_WINDOW)로 실행, stdin / fd 3 JSON 통신
+tray*.go / tray_darwin.m         메뉴바(macOS NSStatusItem) / 트레이(Linux StatusNotifierItem)
 frontend/                        Svelte UI, <audio>, MediaSession
 internal/
   domain/                        LoopMode, PlaybackState, PlaylistItem
@@ -91,13 +92,13 @@ internal/
 | 키보드 단축키 | 메인 창: Space 재생/일시정지, ← → 이전/다음, ↑ ↓ 볼륨, V 화면 보기 · 영상 창: Enter 전체 화면 전환, Esc 전체 화면 해제, Space 누르는 동안 2배속, 클릭 재생/일시정지 | ✅ |
 | 업데이트 확인 | GitHub Release 확인 + 다운로드 링크 (자동 설치는 미지원) | ✅ |
 | 재생목록 URL 가져오기 | `list=` URL 이면 목록 전체 추가 (최대 500곡, 비공개/삭제 영상 제외, 영상 ID 기준 중복 제외) | ✅ |
-| 화면 보기 (별도 창) | '📺 화면 보기' 체크 / V 키 → 영상 창(자식 프로세스), 영상 비율에 맞춰 창 크기 조정, 켜고 끌 때 이어서 재생 | ✅ |
-| 시스템 트레이 | Wails v2 미지원 → 보류 | ⏸ |
-| 볼륨키 연타로 이전/다음곡 (MediaKeyPatternDetector) | 전역 키 후킹 필요 → 보류 | ⏸ |
+| 화면 보기 (별도 창) | '📺 화면 보기' 체크 / V 키 → 영상 창(자식 프로세스, Dock 아이콘 없음), 영상 비율에 맞춰 창 크기 조정, 켜고 끌 때 이어서 재생 | ✅ |
+| 시스템 트레이 | macOS 메뉴바(NSStatusItem) / Linux 트레이(StatusNotifierItem): 재생·이전·다음·열기·종료, macOS 는 창을 닫으면 메뉴바로 숨김 | ✅ |
+| 볼륨키 연타로 이전/다음곡 (MediaKeyPatternDetector) | MediaSession 으로 대체 — AirPods 두 번 누르기 다음곡 / 세 번 이전곡, 미디어 키 (전역 키 후킹·권한 요청 없음) | ✅ |
 
 ---
 
-## 검증 결과 (macOS, 2026-11-01)
+## 검증 결과 (2026-11-01)
 
 | 항목 | 결과 |
 |---|---|
@@ -107,16 +108,11 @@ internal/
 | 오디오 형식: opus 는 길이 정상, m4a 는 WKWebView 에서 길이 2배 → opus 우선 | ✅ |
 | 화면 보기: 영상 창 표시 → 영상+소리 재생 → 영상 비율로 창 크기 맞춤 → 체크 해제 / 창 닫기 시 오디오로 이어서 재생 | ✅ |
 | 재생목록 URL(40곡) 붙여넣기 → 39곡 추가 + 기존 1곡 중복 제외, 목록 / playlist.json 반영 | ✅ |
-| yt-dlp 최초 다운로드 / 자동 업데이트 실제 동작 | ⚠️ 단위 테스트(httptest)만 확인 |
+| yt-dlp 최초 자동 설치 (다운로드 + SHA-256 검증) | ✅ CI: 설치한 deb 앱을 xvfb 에서 실행해 확인 |
 | 스트림 403 대응: 큰 범위 요청 분할(프록시) + 막힌 스트림은 android_vr 클라이언트로 재시도 → 실패하던 영상의 오디오 / 화면 보기 재생 확인 | ✅ |
 | 일부 영상은 모든 클라이언트에서 403 | ⚠️ "YouTube가 이 영상의 스트림을 차단했습니다" 표시 |
-| Linux 실행 | ⚠️ 컴파일만 확인 |
-
-## 남은 과제
-
-- 영상 창은 별도 프로세스라 Dock 에 아이콘이 하나 더 표시됨 (Wails v3 이전 시 해결 가능)
-- macOS 서명 / 공증: GitHub Secrets 등록 시 Release 워크플로가 자동 수행 ([docs/RELEASE.md](docs/RELEASE.md)), 미등록 시 최초 1회 '그래도 열기' 필요
-- 시스템 트레이, 볼륨키 패턴 감지
+| Linux: deb 빌드 → `apt install` → 앱 실행 | ✅ CI (Ubuntu 22.04) |
+| macOS: 메뉴바 메뉴(재생·다음·열기), 창 닫기 → 메뉴바로 숨김 → 다시 열기, 영상 창 Dock 아이콘 없음 | ✅ |
 
 ---
 

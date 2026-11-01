@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"log"
 	"sync"
 	"time"
 
@@ -73,6 +74,35 @@ func (a *App) startup(ctx context.Context) {
 	}
 
 	go a.prepareYtdlp(ctx)
+
+	startTray(a.onTrayAction)
+}
+
+// onTrayAction 트레이(메뉴바) 메뉴
+func (a *App) onTrayAction(action string) {
+	var err error
+
+	switch action {
+	case trayPlayPause:
+		err = a.playerService.PlayPause()
+	case trayPrevious:
+		err = a.playerService.Previous()
+	case trayNext:
+		err = a.playerService.Next()
+	case trayShow:
+		a.showWindow()
+	case trayQuit:
+		runtime.Quit(a.ctx)
+	}
+
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "player:error", err.Error())
+	}
+}
+
+func (a *App) showWindow() {
+	runtime.WindowUnminimise(a.ctx)
+	runtime.WindowShow(a.ctx)
 }
 
 // prepareYtdlp yt-dlp 설치(최초 실행) / 하루 한 번 업데이트
@@ -83,11 +113,13 @@ func (a *App) prepareYtdlp(ctx context.Context) {
 	defer cancel()
 
 	if err := a.ytdlp.Prepare(prepCtx); err != nil {
+		log.Printf("yt-dlp 준비 실패: %v", err)
 		runtime.EventsEmit(ctx, "ytdlp:status", "error")
 		runtime.EventsEmit(ctx, "player:error", err.Error())
 		return
 	}
 
+	log.Printf("yt-dlp 준비 완료: %s", a.ytdlp.Path())
 	runtime.EventsEmit(ctx, "ytdlp:status", "ready")
 }
 
@@ -100,14 +132,13 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 }
 
-// onSecondInstanceLaunch 중복 실행 시 기존 창을 앞으로
+// onSecondInstanceLaunch 중복 실행 시 기존 창을 앞으로 (트레이로 숨긴 경우 포함)
 func (a *App) onSecondInstanceLaunch() {
 	if a.ctx == nil {
 		return
 	}
 
-	runtime.WindowUnminimise(a.ctx)
-	runtime.WindowShow(a.ctx)
+	a.showWindow()
 }
 
 // initNotifications 데스크톱 알림 초기화 (실패 시 알림 비활성화)
@@ -140,6 +171,7 @@ func (a *App) notificationsEnabled() bool {
 
 func (a *App) onTrackChanged(item domain.PlaylistItem) {
 	runtime.WindowSetTitle(a.ctx, "재생중: "+item.Title)
+	setTrayTooltip("SMPX - " + item.Title)
 
 	if !a.notificationsEnabled() {
 		return
