@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"log"
 	"sync"
 	"time"
 
@@ -112,11 +113,13 @@ func (a *App) prepareYtdlp(ctx context.Context) {
 	defer cancel()
 
 	if err := a.ytdlp.Prepare(prepCtx); err != nil {
+		log.Printf("yt-dlp 준비 실패: %v", err)
 		runtime.EventsEmit(ctx, "ytdlp:status", "error")
 		runtime.EventsEmit(ctx, "player:error", err.Error())
 		return
 	}
 
+	log.Printf("yt-dlp 준비 완료: %s", a.ytdlp.Path())
 	runtime.EventsEmit(ctx, "ytdlp:status", "ready")
 }
 

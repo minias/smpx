@@ -153,12 +153,13 @@ jobs:
           dbus-run-session -- xvfb-run -a smpx > "$RUNNER_TEMP/smpx.log" 2>&1 &
 
           YTDLP="$HOME/.config/smpx/bin/yt-dlp"
-          for i in $(seq 1 90); do
+          for i in $(seq 1 150); do
             [ -x "$YTDLP" ] && break
             sleep 2
           done
 
           cat "$RUNNER_TEMP/smpx.log"
+          ls -la "$HOME/.config/smpx" "$HOME/.config/smpx/bin" || true
           pgrep -x smpx
           "$YTDLP" --version
           pkill -x smpx || true
