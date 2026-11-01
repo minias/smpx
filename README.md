@@ -33,7 +33,7 @@ See [docs/RELEASE.md](docs/RELEASE.md) for the release process and macOS signing
 
 | | SMP (original) | SMPX |
 |---|---|---|
-| Language / UI | C# .NET, WinForms | Go 1.25, Wails v2.12, Svelte 3 |
+| Language / UI | C# .NET, WinForms | Go 1.26, Wails v2.17, Svelte 3 |
 | Audio | NAudio (MediaFoundation) | WebView HTML5 `<audio>` (opus / m4a) |
 | Stream extraction | yt-dlp.exe (bundled) | yt-dlp (auto-installed on first launch + auto-updated) |
 | Media keys | Keyboard hook | MediaSession (macOS Now Playing, media keys, AirPods) |
@@ -122,7 +122,7 @@ Play → PlayerService → yt-dlp (stream URL) → "audio:command" event → <au
 
 ## Development
 
-Requires Go 1.25+, Node.js, [Wails CLI](https://wails.io/docs/gettingstarted/installation) (the app installs `yt-dlp` itself)
+Requires Go 1.26+, Node.js, [Wails CLI](https://wails.io/docs/gettingstarted/installation) (the app installs `yt-dlp` itself)
 
 ```bash
 wails dev      # development mode
