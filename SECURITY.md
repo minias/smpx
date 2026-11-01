@@ -26,7 +26,7 @@ SMPX downloads and runs the external program `yt-dlp`. Please report vulnerabili
 
 | Area | Measure |
 |---|---|
-| Dependencies | Dependabot alerts and security updates enabled; version-update PRs go to `dev` |
+| Dependencies | Dependabot alerts and security updates enabled; version-update PRs go to `dev`; Go dependency graph submitted on every push to `main` |
 | Secrets | GitHub secret scanning with push protection, plus a gitleaks scan on every PR / push |
 | Code analysis | CodeQL default setup (Go, JavaScript/TypeScript, Actions), weekly and on PRs |
 | `main` branch | Ruleset: no force push, CodeQL results required |

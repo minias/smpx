@@ -8,16 +8,21 @@ on:
     tags:
       - "v*"
   # 패키징 관련 변경 PR → 빌드만 (Release 없음, 결과물은 Actions artifact)
+  # dev → main PR 은 dev 로 들어올 때 이미 검증했으므로 제외 (병합 대기 시간 단축)
   pull_request:
     branches:
       - dev
-      - main
     paths:
       - "scripts/**"
       - "build/**"
       - "wails.json"
       - ".github/workflows/release.yml"
   workflow_dispatch:
+
+# 같은 PR / 브랜치에 새 커밋이 오면 이전 빌드는 취소 (태그 릴리스는 취소하지 않음)
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 env:
   WAILS_VERSION: v2.17.1
