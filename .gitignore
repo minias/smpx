@@ -26,10 +26,11 @@ go.work.sum
 
 # env file
 .env
+.env.*
 
 # Editor/IDE
 # .idea/
-# .vscode/
+.vscode/
 
 # Node
 node_modules/
@@ -49,5 +50,6 @@ frontend/dist/*
 !frontend/dist/.gitkeep
 
 # OS
+._*
 .DS_Store
 Thumbs.db
