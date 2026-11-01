@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
 
 env:
-  WAILS_VERSION: v2.17.0
+  WAILS_VERSION: v2.17.1
 
 jobs:
   version:
