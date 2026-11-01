@@ -19,6 +19,11 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "deps"
+    # 메이저 업그레이드는 코드 마이그레이션이 필요하므로 자동 PR 대신 수동으로 진행
+    # (보안 알림은 Security 탭에 계속 표시됨 → 알림 확인 후 마이그레이션해 반영)
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
