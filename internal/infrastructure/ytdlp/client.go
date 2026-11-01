@@ -8,11 +8,9 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/minias/smpx/internal/application/youtube"
-	runtime2 "github.com/minias/smpx/internal/infrastructure/runtime"
 )
 
 // 스트림 URL 캐시 유효 시간
@@ -21,6 +19,10 @@ const streamTTL = 30 * time.Minute
 // 에러 메시지에 포함할 stderr 최대 줄 수
 const stderrTailLines = 5
 
+// WebView(WKWebView / WebKitGTK) 재생용 오디오 형식
+// opus(webm) 우선: YouTube DASH m4a 는 WKWebView 에서 길이가 2배로 잡혀 곡 종료가 늦어짐
+const audioFormat = "bestaudio[acodec=opus]/bestaudio[ext=m4a]/bestaudio"
+
 var _ youtube.Resolver = (*Client)(nil)
 
 // runFunc 외부 프로세스 실행 함수 (테스트 주입용)
@@ -28,34 +30,37 @@ type runFunc func(ctx context.Context, bin string, args ...string) (stdout, stde
 
 // Client yt-dlp 기반 Resolver 구현
 type Client struct {
-	binMu   sync.Mutex
-	bin     string
-	resolve func(name string) (string, error)
+	resolve func(ctx context.Context) (string, error)
 	run     runFunc
+
+	// 실패 시 yt-dlp 업데이트 후 1회 재시도 (YouTube 변경 대응)
+	update func(ctx context.Context) bool
 
 	streams *memoCache
 	titles  *memoCache
 	flight  flightGroup
 }
 
-// NewClient 생성 (바이너리는 최초 사용 시 탐색)
-func NewClient() *Client {
-	return newClient(runtime2.ResolveBinary, execRun, time.Now)
+// NewClient 생성 (yt-dlp 경로는 Manager 가 관리)
+func NewClient(m *Manager) *Client {
+	c := newClient(m.Resolve, execRun, time.Now)
+	c.update = m.ForceUpdate
+	return c
 }
 
-func newClient(resolve func(string) (string, error), run runFunc, now func() time.Time) *Client {
+func newClient(resolve func(context.Context) (string, error), run runFunc, now func() time.Time) *Client {
 	return &Client{
 		resolve: resolve,
 		run:     run,
+		update:  func(context.Context) bool { return false },
 		streams: newMemoCache(streamTTL, now),
 		titles:  newMemoCache(0, now),
 	}
 }
 
-// execRun 실제 프로세스 실행 (셸 미사용, 콘솔 창 숨김)
+// execRun 실제 프로세스 실행 (셸 미사용)
 func execRun(ctx context.Context, bin string, args ...string) ([]byte, []byte, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
-	runtime2.HideConsole(cmd)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -63,22 +68,6 @@ func execRun(ctx context.Context, bin string, args ...string) ([]byte, []byte, e
 
 	err := cmd.Run()
 	return stdout.Bytes(), stderr.Bytes(), err
-}
-
-// binary yt-dlp 경로 지연 탐색 (성공 시에만 캐시)
-func (c *Client) binary() (string, error) {
-	c.binMu.Lock()
-	defer c.binMu.Unlock()
-
-	if c.bin != "" {
-		return c.bin, nil
-	}
-	p, err := c.resolve("yt-dlp")
-	if err != nil {
-		return "", fmt.Errorf("yt-dlp not found: %w", err)
-	}
-	c.bin = p
-	return p, nil
 }
 
 // validateURL 빈 값 / 옵션 주입 방지
@@ -108,7 +97,7 @@ func (c *Client) StreamURL(ctx context.Context, url string) (string, error) {
 		if v, ok := c.streams.get(url); ok {
 			return v, nil
 		}
-		out, err := c.exec(ctx, "-f", "bestaudio/best", "--no-playlist", "--no-warnings", "-g", "--", url)
+		out, err := c.exec(ctx, "-f", audioFormat, "--no-playlist", "--no-warnings", "-g", "--", url)
 		if err != nil {
 			return "", err
 		}
@@ -148,11 +137,19 @@ func (c *Client) Title(ctx context.Context, url string) (string, error) {
 	})
 }
 
-// exec yt-dlp 실행 후 stdout 반환 (실패 시 stderr 꼬리 포함)
+// exec yt-dlp 실행 후 stdout 반환 (실패 시 업데이트 후 1회 재시도)
 func (c *Client) exec(ctx context.Context, args ...string) ([]byte, error) {
-	bin, err := c.binary()
+	out, err := c.execOnce(ctx, args...)
+	if err == nil || ctx.Err() != nil || !c.update(ctx) {
+		return out, err
+	}
+	return c.execOnce(ctx, args...)
+}
+
+func (c *Client) execOnce(ctx context.Context, args ...string) ([]byte, error) {
+	bin, err := c.resolve(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("yt-dlp not found: %w", err)
 	}
 	stdout, stderr, err := c.run(ctx, bin, args...)
 	if err != nil {

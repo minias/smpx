@@ -6,6 +6,18 @@ export function AddTrack(arg1) {
   return window['go']['main']['App']['AddTrack'](arg1);
 }
 
+export function AudioEnded(arg1) {
+  return window['go']['main']['App']['AudioEnded'](arg1);
+}
+
+export function AudioFailed(arg1, arg2) {
+  return window['go']['main']['App']['AudioFailed'](arg1, arg2);
+}
+
+export function AudioPaused(arg1, arg2) {
+  return window['go']['main']['App']['AudioPaused'](arg1, arg2);
+}
+
 export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
 }

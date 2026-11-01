@@ -10,7 +10,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 
 	"github.com/minias/smpx/internal/application/service"
-	"github.com/minias/smpx/internal/infrastructure/player"
 	"github.com/minias/smpx/internal/infrastructure/storage"
 	"github.com/minias/smpx/internal/infrastructure/update"
 	"github.com/minias/smpx/internal/infrastructure/ytdlp"
@@ -26,13 +25,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	ytdlpManager, err := ytdlp.NewManager()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "yt-dlp 관리자 초기화 실패:", err)
+		os.Exit(1)
+	}
+
+	audio := newWebviewPlayer()
+
 	playerService := service.NewPlayerService(
-		ytdlp.NewClient(),
-		player.NewPlayer(),
+		ytdlp.NewClient(ytdlpManager),
+		audio,
 		repo,
 	)
 
-	app := NewApp(playerService, update.NewChecker(UpdateRepo, AppVersion))
+	app := NewApp(playerService, audio, ytdlpManager, update.NewChecker(UpdateRepo, AppVersion))
 
 	err = wails.Run(&options.App{
 		Title:     defaultTitle,

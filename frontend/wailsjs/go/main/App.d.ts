@@ -5,6 +5,12 @@ import {service} from '../models';
 
 export function AddTrack(arg1:string):Promise<void>;
 
+export function AudioEnded(arg1:number):Promise<void>;
+
+export function AudioFailed(arg1:number,arg2:string):Promise<void>;
+
+export function AudioPaused(arg1:number,arg2:boolean):Promise<void>;
+
 export function CheckForUpdate():Promise<update.Info>;
 
 export function CycleLoopMode():Promise<string>;

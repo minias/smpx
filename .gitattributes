@@ -10,4 +10,3 @@
 *.ico binary
 *.icns binary
 *.woff2 binary
-resources/bin/** binary

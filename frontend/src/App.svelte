@@ -2,6 +2,9 @@
 	import { onDestroy, onMount } from "svelte";
 	import {
 		AddTrack,
+		AudioEnded,
+		AudioFailed,
+		AudioPaused,
 		CheckForUpdate,
 		CycleLoopMode,
 		GetState,
@@ -44,6 +47,13 @@
 	let error = "";
 	let updateInfo = null;
 	let version = "";
+
+	// yt-dlp 준비 상태: preparing | ready | error
+	let ytdlpStatus = "";
+
+	// 실제 재생은 <audio>, 재생 상태는 Go(PlayerService)가 관리
+	let audio;
+	let audioSeq = 0; // 0 = 정지 (이전 곡 이벤트 무시)
 
 	// 슬라이더 조작 중(디바운스 대기)에는 서버 상태로 덮어쓰지 않음
 	let volume = 50;
@@ -180,6 +190,98 @@
 		}
 	}
 
+	// ---- Go → <audio> ----
+
+	function playAudio(seq) {
+		audio.play().catch((e) => {
+			// 다음 곡 로드로 중단된 경우는 정상
+			if (e?.name !== "AbortError" && seq === audioSeq) {
+				AudioFailed(seq, `재생 실패: ${e?.message ?? e}`);
+			}
+		});
+	}
+
+	function onAudioCommand(cmd) {
+		if (!audio || !cmd) return;
+
+		switch (cmd.action) {
+			case "play":
+				audioSeq = cmd.seq;
+				audio.src = cmd.url;
+				audio.volume = cmd.volume / 100;
+				playAudio(cmd.seq);
+				break;
+			case "pause":
+				audio.pause();
+				break;
+			case "resume":
+				playAudio(audioSeq);
+				break;
+			case "stop":
+				audioSeq = 0;
+				audio.pause();
+				audio.removeAttribute("src");
+				audio.load();
+				break;
+			case "volume":
+				audio.volume = cmd.volume / 100;
+				break;
+		}
+	}
+
+	// ---- <audio> → Go ----
+
+	const MEDIA_ERRORS = {
+		1: "재생이 중단되었습니다",
+		2: "네트워크 오류",
+		3: "오디오 디코딩 실패",
+		4: "지원하지 않는 형식이거나 스트림을 열 수 없습니다",
+	};
+
+	function onAudioEnded() {
+		if (audioSeq) AudioEnded(audioSeq);
+	}
+
+	function onAudioError() {
+		if (!audioSeq) return;
+		const code = audio.error?.code;
+		AudioFailed(audioSeq, MEDIA_ERRORS[code] ?? `오디오 오류 (${code})`);
+	}
+
+	function onAudioPause() {
+		if (audioSeq && !audio.ended) AudioPaused(audioSeq, true);
+	}
+
+	function onAudioPlaying() {
+		if (audioSeq) AudioPaused(audioSeq, false);
+	}
+
+	// ---- MediaSession: macOS '지금 재생 중', 미디어 키, AirPods ----
+
+	function setupMediaSession() {
+		if (!("mediaSession" in navigator)) return;
+		const handlers = {
+			play: () => player.state !== "playing" && togglePlay(),
+			pause: () => player.state === "playing" && run(PlayPause),
+			stop,
+			nexttrack: next,
+			previoustrack: previous,
+		};
+		for (const [action, fn] of Object.entries(handlers)) {
+			try {
+				navigator.mediaSession.setActionHandler(action, fn);
+			} catch {
+				// 지원하지 않는 액션
+			}
+		}
+	}
+
+	$: if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+		const ms = navigator.mediaSession;
+		ms.playbackState = isPlaying ? "playing" : player.state === "paused" ? "paused" : "none";
+		ms.metadata = current ? new MediaMetadata({ title: current.title, artist: "SMPX" }) : null;
+	}
+
 	function marker(index, currentIndex, state) {
 		if (index !== currentIndex) return "";
 		if (state === "playing") return "▶";
@@ -191,6 +293,9 @@
 	onMount(async () => {
 		EventsOn("player:state", applyState);
 		EventsOn("player:error", showError);
+		EventsOn("audio:command", onAudioCommand);
+		EventsOn("ytdlp:status", (s) => (ytdlpStatus = s));
+		setupMediaSession();
 
 		try {
 			applyState(await GetState());
@@ -208,14 +313,30 @@
 	});
 
 	onDestroy(() => {
-		EventsOff("player:state", "player:error");
+		EventsOff("player:state", "player:error", "audio:command", "ytdlp:status");
 		clearTimeout(volumeTimer);
 	});
 </script>
 
 <svelte:window on:keydown={onGlobalKey} />
 
+<audio
+	bind:this={audio}
+	preload="auto"
+	on:ended={onAudioEnded}
+	on:error={onAudioError}
+	on:pause={onAudioPause}
+	on:playing={onAudioPlaying}
+/>
+
 <main>
+	{#if ytdlpStatus === "preparing"}
+		<div class="banner">
+			<span class="spinner" />
+			<span>yt-dlp 준비 중… (최초 실행 시 다운로드)</span>
+		</div>
+	{/if}
+
 	{#if updateInfo}
 		<div class="banner">
 			<span>새 버전 <b>{updateInfo.version}</b> 이(가) 있습니다.</span>

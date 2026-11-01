@@ -56,7 +56,7 @@ func NewPlayerService(
 		state:   newPlayerState(),
 	}
 
-	audio.SetHandlers(s.handleEnded, s.handleCommand)
+	audio.SetEndedHandler(s.handleEnded)
 
 	return s
 }
@@ -336,7 +336,25 @@ func (s *PlayerService) CycleLoopMode() domain.LoopMode {
 	return mode
 }
 
-// Shutdown 앱 종료 시 mpv 정리
+// SyncPaused 플레이어가 스스로 일시정지/재개한 경우 상태 동기화 (예: 이어폰 분리)
+func (s *PlayerService) SyncPaused(paused bool) {
+	s.mu.Lock()
+
+	switch {
+	case paused && s.state.State == domain.Playing:
+		s.state.State = domain.Paused
+	case !paused && s.state.State == domain.Paused:
+		s.state.State = domain.Playing
+	default:
+		s.mu.Unlock()
+		return
+	}
+
+	s.mu.Unlock()
+	s.emitState()
+}
+
+// Shutdown 앱 종료 시 재생 정리
 func (s *PlayerService) Shutdown() {
 	s.mu.Lock()
 	_ = s.stopLocked()
@@ -410,26 +428,6 @@ func (s *PlayerService) handleEnded(playErr error) {
 	s.mu.Unlock()
 
 	if err := s.Play(next); err != nil {
-		s.emitError(err)
-	}
-}
-
-// handleCommand mpv 로 들어온 미디어 키 처리
-func (s *PlayerService) handleCommand(command string) {
-	var err error
-
-	switch command {
-	case "playpause":
-		err = s.PlayPause()
-	case "next":
-		err = s.Next()
-	case "prev":
-		err = s.Previous()
-	case "stop":
-		err = s.Stop()
-	}
-
-	if err != nil {
 		s.emitError(err)
 	}
 }

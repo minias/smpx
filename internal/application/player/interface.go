@@ -12,8 +12,6 @@ type AudioPlayer interface {
 	// SetVolume 0 ~ 100
 	SetVolume(volume int) error
 
-	// SetHandlers 재생 종료 / 외부 입력(미디어 키) 콜백 등록
-	//  - onEnded: 사용자가 Stop 하지 않았는데 재생이 끝났을 때 (err != nil 이면 비정상 종료)
-	//  - onCommand: "playpause" | "next" | "prev" | "stop"
-	SetHandlers(onEnded func(err error), onCommand func(command string))
+	// SetEndedHandler 사용자가 Stop 하지 않았는데 재생이 끝났을 때 (err != nil 이면 재생 실패)
+	SetEndedHandler(onEnded func(err error))
 }
