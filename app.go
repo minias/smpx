@@ -17,7 +17,8 @@ import (
 )
 
 // AppVersion 현재 앱 버전 (업데이트 확인에 사용)
-const AppVersion = "0.1.0"
+//   - 릴리스 빌드는 -ldflags "-X main.AppVersion=<태그 버전>" 으로 덮어씀
+var AppVersion = "0.1.0"
 
 // UpdateRepo GitHub 릴리스 저장소 (owner/name)
 const UpdateRepo = "minias/smpx"

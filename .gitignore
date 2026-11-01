@@ -43,6 +43,8 @@ build/bin/
 *.pdb
 *.dmg
 *.msi
+*.deb
+/dist/
 frontend/package.json.md5
 
 # 프론트엔드 빌드 결과 (go:embed 용 디렉토리만 유지)

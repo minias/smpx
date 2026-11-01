@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=SMPX
+GenericName=Music Player
+Comment=YouTube background music player
+Exec=smpx
+Icon=smpx
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=smpx

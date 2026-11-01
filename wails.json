@@ -9,5 +9,12 @@
   "author": {
     "name": "minias",
     "email": "gnuhacker@gmail.com"
+  },
+  "info": {
+    "companyName": "minias",
+    "productName": "SMPX",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright © 2026 minias lee",
+    "comments": "YouTube background music player for macOS / Linux"
   }
 }

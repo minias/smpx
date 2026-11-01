@@ -11,6 +11,20 @@ YouTube 링크를 플레이리스트에 추가하면 `yt-dlp` 로 오디오 스�
 
 ---
 
+## 설치
+
+[Releases](https://github.com/minias/smpx/releases) 에서 받아 설치하면 바로 사용할 수 있습니다. (yt-dlp 는 최초 실행 시 자동 설치)
+
+| OS | 파일 | 설치 |
+|---|---|---|
+| macOS 11+ (Intel / Apple Silicon) | `SMPX_<버전>_macos_universal.dmg` | 열어서 `SMPX` 를 `Applications` 로 드래그 |
+| Ubuntu 22.04+ / Debian 12+ | `smpx_<버전>_linux_amd64.deb` | `sudo apt install ./smpx_<버전>_linux_amd64.deb` |
+| 기타 Linux | `smpx_<버전>_linux_amd64.tar.gz` | 압축 해제 후 `smpx` 실행 |
+
+릴리스 절차, macOS 서명 / 공증 설정은 [docs/RELEASE.md](docs/RELEASE.md) 참고.
+
+---
+
 ## 기술 스택
 
 | 구분 | SMP (원본) | SMPX |
@@ -94,14 +108,14 @@ internal/
 | 화면 보기: 영상 창 표시 → 영상+소리 재생 → 영상 비율로 창 크기 맞춤 → 체크 해제 / 창 닫기 시 오디오로 이어서 재생 | ✅ |
 | 재생목록 URL(40곡) 붙여넣기 → 39곡 추가 + 기존 1곡 중복 제외, 목록 / playlist.json 반영 | ✅ |
 | yt-dlp 최초 다운로드 / 자동 업데이트 실제 동작 | ⚠️ 단위 테스트(httptest)만 확인 |
-| 스트림 403 대응: 큰 범위 요청 분할(프록시) + 막힌 스트림은 android_vr 클라이언트로 재시도 → 실패하던 `ha8zHkXEnLc` 오디오 / 화면 보기 재생 | ✅ |
-| 일부 영상은 모든 클라이언트에서 403 (예: `dQw4w9WgXcQ`) | ⚠️ "YouTube가 이 영상의 스트림을 차단했습니다" 표시 |
+| 스트림 403 대응: 큰 범위 요청 분할(프록시) + 막힌 스트림은 android_vr 클라이언트로 재시도 → 실패하던 영상의 오디오 / 화면 보기 재생 확인 | ✅ |
+| 일부 영상은 모든 클라이언트에서 403 | ⚠️ "YouTube가 이 영상의 스트림을 차단했습니다" 표시 |
 | Linux 실행 | ⚠️ 컴파일만 확인 |
 
 ## 남은 과제
 
 - 영상 창은 별도 프로세스라 Dock 에 아이콘이 하나 더 표시됨 (Wails v3 이전 시 해결 가능)
-- 배포 시 macOS 경고 없이 열리려면 Apple Developer ID 서명 / 공증 필요 (미적용 시 최초 1회 '그래도 열기')
+- macOS 서명 / 공증: GitHub Secrets 등록 시 Release 워크플로가 자동 수행 ([docs/RELEASE.md](docs/RELEASE.md)), 미등록 시 최초 1회 '그래도 열기' 필요
 - 시스템 트레이, 볼륨키 패턴 감지
 
 ---
