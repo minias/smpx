@@ -86,8 +86,13 @@ jobs:
 
           IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep 'Developer ID Application' | head -1 | awk -F'"' '{print $2}')"
           if [ -z "$IDENTITY" ]; then
-            echo "Developer ID Application 인증서를 찾을 수 없습니다" >&2
-            exit 1
+            # Apple Development 등 배포용이 아닌 인증서: 릴리스(태그)는 중단, PR 빌드는 서명 없이 계속
+            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+              echo "::error::Developer ID Application 인증서를 찾을 수 없습니다 (docs/RELEASE.md 참고)"
+              exit 1
+            fi
+            echo "::warning::Developer ID Application 인증서가 없어 서명 없이 빌드합니다 (docs/RELEASE.md 참고)"
+            exit 0
           fi
           echo "MACOS_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
