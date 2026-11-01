@@ -19,6 +19,20 @@ export namespace domain {
 
 export namespace service {
 	
+	export class AddResult {
+	    added: number;
+	    skipped: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AddResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.added = source["added"];
+	        this.skipped = source["skipped"];
+	    }
+	}
 	export class PlayerState {
 	    playlist: domain.PlaylistItem[];
 	    currentIndex: number;

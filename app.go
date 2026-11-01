@@ -157,7 +157,8 @@ func (a *App) GetState() service.PlayerState {
 	return a.playerService.State()
 }
 
-func (a *App) AddTrack(url string) error {
+// AddTrack URL 추가 (재생목록이면 전체), 추가 / 중복 곡 수 반환
+func (a *App) AddTrack(url string) (service.AddResult, error) {
 	return a.playerService.AddTrack(url)
 }
 

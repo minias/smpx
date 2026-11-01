@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,9 +21,18 @@ const streamTTL = 30 * time.Minute
 // 에러 메시지에 포함할 stderr 최대 줄 수
 const stderrTailLines = 5
 
+// 재생목록에서 가져올 최대 곡 수
+const maxPlaylistItems = 500
+
+// 재생목록의 재생 불가 항목
+var unavailableTitles = map[string]bool{
+	"[Private video]": true,
+	"[Deleted video]": true,
+}
+
 // WebView(WKWebView / WebKitGTK) 재생용 오디오 형식
 // opus(webm) 우선: YouTube DASH m4a 는 WKWebView 에서 길이가 2배로 잡혀 곡 종료가 늦어짐
-const audioFormat = "bestaudio[acodec=opus]/bestaudio[ext=m4a]/bestaudio"
+const audioFormat = "bestaudio[acodec=opus]/bestaudio[ext=m4a]/bestaudio/best"
 
 // 화면 보기용: H.264 영상(최대 1080p) + opus 오디오, 없으면 소리 포함 단일 스트림
 const videoFormat = "bv*[vcodec^=avc1][height<=1080]+ba[acodec=opus]/bv*[vcodec^=avc1][height<=1080]+ba/b[vcodec^=avc1]/b"
@@ -40,8 +50,10 @@ type Client struct {
 	// 실패 시 yt-dlp 업데이트 후 1회 재시도 (YouTube 변경 대응)
 	update func(ctx context.Context) bool
 
+	// 스트림 접근 가능 여부 확인 (테스트에서는 생략)
+	probe func(ctx context.Context, url string) error
+
 	streams *memoCache
-	titles  *memoCache
 	flight  flightGroup
 }
 
@@ -49,6 +61,7 @@ type Client struct {
 func NewClient(m *Manager) *Client {
 	c := newClient(m.Resolve, execRun, time.Now)
 	c.update = m.ForceUpdate
+	c.probe = probeStream
 	return c
 }
 
@@ -57,8 +70,8 @@ func newClient(resolve func(context.Context) (string, error), run runFunc, now f
 		resolve: resolve,
 		run:     run,
 		update:  func(context.Context) bool { return false },
+		probe:   func(context.Context, string) error { return nil },
 		streams: newMemoCache(streamTTL, now),
-		titles:  newMemoCache(0, now),
 	}
 }
 
@@ -101,16 +114,12 @@ func (c *Client) StreamURL(ctx context.Context, url string) (string, error) {
 		if v, ok := c.streams.get(url); ok {
 			return v, nil
 		}
-		out, err := c.exec(ctx, "-f", audioFormat, "--no-playlist", "--no-warnings", "-g", "--", url)
+		lines, err := c.extract(ctx, url, audioFormat)
 		if err != nil {
 			return "", err
 		}
-		line := firstLine(out)
-		if line == "" {
-			return "", errors.New("yt-dlp: empty stream url")
-		}
-		c.streams.set(url, line)
-		return line, nil
+		c.streams.set(url, lines[0])
+		return lines[0], nil
 	})
 }
 
@@ -133,13 +142,9 @@ func (c *Client) Streams(ctx context.Context, url string, video bool) (domain.St
 			if v, ok := c.streams.get(key); ok {
 				return v, nil
 			}
-			out, err := c.exec(ctx, "-f", videoFormat, "--no-playlist", "--no-warnings", "-g", "--", url)
+			lines, err := c.extract(ctx, url, videoFormat)
 			if err != nil {
 				return "", err
-			}
-			lines := nonEmptyLines(out)
-			if len(lines) == 0 {
-				return "", errors.New("yt-dlp: empty stream url")
 			}
 			v := strings.Join(lines, "\n")
 			c.streams.set(key, v)
@@ -159,31 +164,48 @@ func (c *Client) Streams(ctx context.Context, url string, video bool) (domain.St
 	return st, nil
 }
 
-// Title 영상 제목 조회 (비어 있으면 url 반환, 캐시 유지)
-func (c *Client) Title(ctx context.Context, url string) (string, error) {
+// Expand URL 을 플레이리스트 항목으로 변환
+//   - 재생목록 URL(list=...): 목록 전체 (최대 maxPlaylistItems, 비공개/삭제 영상 제외)
+//   - 단일 영상 URL: 한 곡 (제목이 없으면 URL)
+func (c *Client) Expand(ctx context.Context, url string) ([]domain.PlaylistItem, error) {
 	url, err := validateURL(url)
 	if err != nil {
-		return "", err
-	}
-	if v, ok := c.titles.get(url); ok {
-		return v, nil
+		return nil, err
 	}
 
-	return c.flight.do(ctx, "title\x00"+url, func() (string, error) {
-		if v, ok := c.titles.get(url); ok {
-			return v, nil
+	out, err := c.exec(ctx,
+		"--flat-playlist", "--yes-playlist", "--no-warnings",
+		"--playlist-end", strconv.Itoa(maxPlaylistItems),
+		"--print", "%(webpage_url,url)s\t%(title)s",
+		"--", url)
+	if err != nil {
+		return nil, err
+	}
+
+	var items []domain.PlaylistItem
+	for _, line := range nonEmptyLines(out) {
+		link, title, _ := strings.Cut(line, "\t")
+		title = strings.TrimSpace(title)
+
+		if link == "" || link == "NA" || unavailableTitles[title] {
+			continue
 		}
-		out, err := c.exec(ctx, "--no-playlist", "--no-warnings", "--print", "title", "--", url)
-		if err != nil {
-			return "", err
+		if title == "" || title == "NA" {
+			title = link
 		}
-		title := firstLine(out)
-		if title == "" {
-			title = url
-		}
-		c.titles.set(url, title)
-		return title, nil
-	})
+		items = append(items, domain.PlaylistItem{Title: title, URL: link})
+	}
+
+	// 단일 영상은 사용자가 입력한 URL 유지
+	if len(items) == 1 && !strings.Contains(url, "list=") {
+		items[0].URL = url
+	}
+
+	if len(items) == 0 {
+		return nil, errors.New("추가할 수 있는 영상이 없습니다")
+	}
+
+	return items, nil
 }
 
 // exec yt-dlp 실행 후 stdout 반환 (실패 시 업데이트 후 1회 재시도)

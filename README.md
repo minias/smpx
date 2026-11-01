@@ -7,7 +7,7 @@ Windows 는 SMP 를 사용합니다.
 YouTube 링크를 플레이리스트에 추가하면 `yt-dlp` 로 오디오 스트림 주소를 추출하고, 앱 화면(WebView)의 HTML5 오디오로 재생합니다.
 **사용자가 별도로 설치할 것이 없습니다.** `yt-dlp` 는 최초 실행 시 앱이 내려받고 하루 한 번 자동 업데이트합니다.
 
-> 상태: 🚧 화면 보기(별도 창) 추가 중 (2026-11-01, `feature/video-window`)
+> 상태: ✅ SMP 기능 이식 + 무설정 배포 + 화면 보기 + 재생목록 가져오기 (2026-11-01)
 
 ---
 
@@ -41,7 +41,8 @@ internal/
     playlist/                    Repository 포트
     service/                     PlayerService (SMP PlayerFacade + UseCases), PlayerState
   infrastructure/
-    ytdlp/                       yt-dlp 클라이언트(TTL 캐시, 중복 요청 방지) + Manager(설치 / 업데이트)
+    ytdlp/                       yt-dlp 클라이언트(TTL 캐시, 중복 요청 방지, 스트림 403 확인 후 클라이언트 우회) + Manager(설치 / 업데이트)
+    streamproxy/                 127.0.0.1 스트림 프록시: WebView 의 큰 범위 요청을 2MB 조각으로 나눠 YouTube 403 회피
     storage/                     playlist.json 저장소
     update/                      GitHub Release 업데이트 확인
 ```
@@ -75,7 +76,7 @@ internal/
 | 미디어 키 (재생/일시정지, 이전, 다음) | MediaSession — macOS '지금 재생 중' / 미디어 키 / AirPods | ✅ |
 | 키보드 단축키 | 앱 포커스 시 Space / ← → / ↑ ↓ | ✅ |
 | 업데이트 확인 | GitHub Release 확인 + 다운로드 링크 (자동 설치는 미지원) | ✅ |
-| 재생목록 URL 가져오기 | — | 📝 예정 |
+| 재생목록 URL 가져오기 | `list=` URL 이면 목록 전체 추가 (최대 500곡, 비공개/삭제 영상 제외, 영상 ID 기준 중복 제외) | ✅ |
 | 화면 보기 (별도 창) | '📺 화면 보기' 체크 / V 키 → 영상 창(자식 프로세스), 영상 비율에 맞춰 창 크기 조정, 켜고 끌 때 이어서 재생 | ✅ |
 | 시스템 트레이 | Wails v2 미지원 → 보류 | ⏸ |
 | 볼륨키 연타로 이전/다음곡 (MediaKeyPatternDetector) | 전역 키 후킹 필요 → 보류 | ⏸ |
@@ -91,13 +92,14 @@ internal/
 | 앱 실행 → 재생(Space) → WebView 오디오 출력 → 곡 종료 후 자동 다음곡(사용자 입력 없이) → 마지막 곡 후 정지 | ✅ |
 | 오디오 형식: opus 는 길이 정상, m4a 는 WKWebView 에서 길이 2배 → opus 우선 | ✅ |
 | 화면 보기: 영상 창 표시 → 영상+소리 재생 → 영상 비율로 창 크기 맞춤 → 체크 해제 / 창 닫기 시 오디오로 이어서 재생 | ✅ |
+| 재생목록 URL(40곡) 붙여넣기 → 39곡 추가 + 기존 1곡 중복 제외, 목록 / playlist.json 반영 | ✅ |
 | yt-dlp 최초 다운로드 / 자동 업데이트 실제 동작 | ⚠️ 단위 테스트(httptest)만 확인 |
-| 일부 영상은 최신 yt-dlp 에서도 스트림 403 (YouTube PO 토큰 요구 영상) | ⚠️ 재생 실패로 표시 |
+| 스트림 403 대응: 큰 범위 요청 분할(프록시) + 막힌 스트림은 android_vr 클라이언트로 재시도 → 실패하던 `ha8zHkXEnLc` 오디오 / 화면 보기 재생 | ✅ |
+| 일부 영상은 모든 클라이언트에서 403 (예: `dQw4w9WgXcQ`) | ⚠️ "YouTube가 이 영상의 스트림을 차단했습니다" 표시 |
 | Linux 실행 | ⚠️ 컴파일만 확인 |
 
 ## 남은 과제
 
-- 재생목록 URL 가져오기
 - 영상 창은 별도 프로세스라 Dock 에 아이콘이 하나 더 표시됨 (Wails v3 이전 시 해결 가능)
 - 배포 시 macOS 경고 없이 열리려면 Apple Developer ID 서명 / 공증 필요 (미적용 시 최초 1회 '그래도 열기')
 - 시스템 트레이, 볼륨키 패턴 감지

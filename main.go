@@ -11,6 +11,7 @@ import (
 
 	"github.com/minias/smpx/internal/application/service"
 	"github.com/minias/smpx/internal/infrastructure/storage"
+	"github.com/minias/smpx/internal/infrastructure/streamproxy"
 	"github.com/minias/smpx/internal/infrastructure/update"
 	"github.com/minias/smpx/internal/infrastructure/ytdlp"
 )
@@ -39,7 +40,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	audio := newWebviewPlayer()
+	// 프록시를 못 띄우면 원본 주소로 재생 (큰 스트림은 403 가능)
+	proxy, err := streamproxy.Start()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "스트림 프록시 시작 실패:", err)
+		proxy = nil
+	}
+
+	audio := newWebviewPlayer(proxy)
 
 	playerService := service.NewPlayerService(
 		ytdlp.NewClient(ytdlpManager),
