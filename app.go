@@ -3,7 +3,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -11,6 +13,7 @@ import (
 	"github.com/minias/smpx/internal/application/service"
 	"github.com/minias/smpx/internal/domain"
 	"github.com/minias/smpx/internal/infrastructure/update"
+	"github.com/minias/smpx/internal/infrastructure/ytdlp"
 )
 
 // AppVersion 현재 앱 버전 (업데이트 확인에 사용)
@@ -25,21 +28,31 @@ const defaultTitle = "SMPX"
 type App struct {
 	ctx           context.Context
 	playerService *service.PlayerService
+	audio         *webviewPlayer
+	ytdlp         *ytdlp.Manager
 	updater       *update.Checker
 
 	notifyMu      sync.Mutex
 	notifyEnabled bool
 }
 
-func NewApp(playerService *service.PlayerService, updater *update.Checker) *App {
+func NewApp(
+	playerService *service.PlayerService,
+	audio *webviewPlayer,
+	ytdlpManager *ytdlp.Manager,
+	updater *update.Checker,
+) *App {
 	return &App{
 		playerService: playerService,
+		audio:         audio,
+		ytdlp:         ytdlpManager,
 		updater:       updater,
 	}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.audio.setContext(ctx)
 
 	a.initNotifications()
 
@@ -56,6 +69,24 @@ func (a *App) startup(ctx context.Context) {
 	if err := a.playerService.LoadPlaylist(); err != nil {
 		runtime.EventsEmit(ctx, "player:error", "플레이리스트 로드 실패: "+err.Error())
 	}
+
+	go a.prepareYtdlp(ctx)
+}
+
+// prepareYtdlp yt-dlp 설치(최초 실행) / 하루 한 번 업데이트
+func (a *App) prepareYtdlp(ctx context.Context) {
+	runtime.EventsEmit(ctx, "ytdlp:status", "preparing")
+
+	prepCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
+	if err := a.ytdlp.Prepare(prepCtx); err != nil {
+		runtime.EventsEmit(ctx, "ytdlp:status", "error")
+		runtime.EventsEmit(ctx, "player:error", err.Error())
+		return
+	}
+
+	runtime.EventsEmit(ctx, "ytdlp:status", "ready")
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -175,4 +206,23 @@ func (a *App) OpenURL(url string) {
 
 func (a *App) Version() string {
 	return AppVersion
+}
+
+// ---- <audio> → Go 통보 ----
+
+// AudioEnded 곡이 끝까지 재생됨
+func (a *App) AudioEnded(seq uint64) {
+	a.audio.ended(seq, nil)
+}
+
+// AudioFailed 스트림 재생 실패 (네트워크 / 형식 / 만료 등)
+func (a *App) AudioFailed(seq uint64, message string) {
+	a.audio.ended(seq, errors.New(message))
+}
+
+// AudioPaused OS / 브라우저가 일시정지·재개한 경우 (미디어 키는 MediaSession 으로 직접 호출)
+func (a *App) AudioPaused(seq uint64, paused bool) {
+	if a.audio.current(seq) {
+		a.playerService.SyncPaused(paused)
+	}
 }

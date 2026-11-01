@@ -62,7 +62,7 @@ func (f *fakePlayer) SetVolume(volume int) error {
 	return nil
 }
 
-func (f *fakePlayer) SetHandlers(onEnded func(error), _ func(string)) {
+func (f *fakePlayer) SetEndedHandler(onEnded func(error)) {
 	f.onEnded = onEnded
 }
 
@@ -273,5 +273,25 @@ func TestVolumeClampedAndKeptForNextPlay(t *testing.T) {
 
 	if audio.volume != 100 || s.State().Volume != 100 {
 		t.Errorf("volume = %d", audio.volume)
+	}
+}
+
+func TestSyncPaused(t *testing.T) {
+	s, _, _, _ := newTestService(t, "a")
+
+	s.SyncPaused(true) // 정지 상태에서는 무시
+	if s.State().State != domain.Stopped {
+		t.Fatalf("state = %q", s.State().State)
+	}
+
+	_ = s.Play(0)
+	s.SyncPaused(true)
+	if s.State().State != domain.Paused {
+		t.Fatalf("state = %q, want paused", s.State().State)
+	}
+
+	s.SyncPaused(false)
+	if s.State().State != domain.Playing {
+		t.Fatalf("state = %q, want playing", s.State().State)
 	}
 }

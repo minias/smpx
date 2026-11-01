@@ -29,7 +29,7 @@ func (f *fakeClock) advance(d time.Duration) {
 	f.mu.Unlock()
 }
 
-func okResolve(string) (string, error) { return "/bin/yt-dlp", nil }
+func okResolve(context.Context) (string, error) { return "/bin/yt-dlp", nil }
 
 func newTestClient(run runFunc) (*Client, *fakeClock) {
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
@@ -56,7 +56,7 @@ func TestStreamURLCacheHitAndTTL(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("calls = %d, want 1", calls)
 	}
-	want := []string{"-f", "bestaudio/best", "--no-playlist", "--no-warnings", "-g", "--", url}
+	want := []string{"-f", audioFormat, "--no-playlist", "--no-warnings", "-g", "--", url}
 	if strings.Join(gotArgs, " ") != strings.Join(want, " ") {
 		t.Fatalf("args = %v", gotArgs)
 	}
@@ -185,7 +185,7 @@ func TestTitleCacheAndFallback(t *testing.T) {
 func TestLazyBinaryResolve(t *testing.T) {
 	var resolves int32
 	fail := true
-	c := newClient(func(string) (string, error) {
+	c := newClient(func(context.Context) (string, error) {
 		atomic.AddInt32(&resolves, 1)
 		if fail {
 			return "", errors.New("not found")
@@ -211,8 +211,9 @@ func TestLazyBinaryResolve(t *testing.T) {
 	if _, err := c.StreamURL(context.Background(), "https://y/a"); err != nil {
 		t.Fatal(err)
 	}
-	if resolves != 2 {
-		t.Fatalf("resolves = %d, want 2", resolves)
+	// 경로 캐시는 Manager 담당 — 호출마다 resolve
+	if resolves != 3 {
+		t.Fatalf("resolves = %d, want 3", resolves)
 	}
 }
 
