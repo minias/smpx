@@ -235,3 +235,35 @@ func TestWaiterContextCancel(t *testing.T) {
 	}
 	close(release)
 }
+
+func TestStreamsVideo(t *testing.T) {
+	var gotArgs []string
+	c, _ := newTestClient(func(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
+		gotArgs = args
+		if args[1] == videoFormat {
+			return []byte("https://v/video\nhttps://v/audio\n"), nil, nil
+		}
+		return []byte("https://v/audio-only\n"), nil, nil
+	})
+
+	st, err := c.Streams(context.Background(), "https://y/v", true)
+	if err != nil || st.VideoURL != "https://v/video" || st.AudioURL != "https://v/audio" {
+		t.Fatalf("video = %+v, %v (args %v)", st, err, gotArgs)
+	}
+
+	st, err = c.Streams(context.Background(), "https://y/v", false)
+	if err != nil || st.VideoURL != "" || st.AudioURL != "https://v/audio-only" {
+		t.Fatalf("audio = %+v, %v", st, err)
+	}
+}
+
+func TestStreamsVideoSingleStream(t *testing.T) {
+	c, _ := newTestClient(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		return []byte("https://v/muxed\n"), nil, nil
+	})
+
+	st, err := c.Streams(context.Background(), "https://y/v", true)
+	if err != nil || st.VideoURL != "https://v/muxed" || st.AudioURL != "" {
+		t.Fatalf("got %+v, %v", st, err)
+	}
+}

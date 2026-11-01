@@ -9,38 +9,62 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	appplayer "github.com/minias/smpx/internal/application/player"
+	"github.com/minias/smpx/internal/domain"
 )
 
 var _ appplayer.AudioPlayer = (*webviewPlayer)(nil)
 
 var errNotPlaying = errors.New("재생 중이 아닙니다")
 
-// audioCommand 프론트엔드 <audio> 제어 이벤트 ("audio:command")
+// audioCommand 재생 제어 명령
+//   - 메인 창 <audio>: "audio:command" 이벤트
+//   - 영상 창: stdin 으로 전달 → "video:command" 이벤트
 type audioCommand struct {
-	Action string `json:"action"` // play | pause | resume | stop | volume
-	Seq    uint64 `json:"seq"`
-	URL    string `json:"url,omitempty"`
-	Volume int    `json:"volume"`
+	Action   string  `json:"action"` // play | pause | resume | stop | volume
+	Seq      uint64  `json:"seq"`
+	URL      string  `json:"url,omitempty"`      // 오디오
+	VideoURL string  `json:"videoUrl,omitempty"` // 영상 (영상 창 전용)
+	Volume   int     `json:"volume"`
+	StartAt  float64 `json:"startAt,omitempty"`
+	Title    string  `json:"title,omitempty"`
 }
 
-// webviewPlayer WebView 의 HTML5 <audio> 로 재생하는 AudioPlayer
-//   - Go → JS: "audio:command" 이벤트
-//   - JS → Go: App.AudioEnded / App.AudioFailed / App.AudioPaused (seq 로 이전 곡 이벤트 무시)
+// webviewPlayer WebView 로 재생하는 AudioPlayer
+//   - 오디오 전용: 메인 창의 HTML5 <audio>
+//   - 화면 보기: 별도 영상 창(자식 프로세스)의 <video> + <audio>
+//   - 재생 종료 / 실패 / 일시정지 / 위치 통보는 seq 로 이전 곡 이벤트를 무시
 type webviewPlayer struct {
 	mu      sync.Mutex
 	ctx     context.Context
 	seq     uint64
 	active  bool
+	video   bool // 현재 곡을 영상 창에서 재생 중
+	pos     float64
 	onEnded func(error)
+
+	// 영상 창에서 온 사용자 조작 (미디어 키 / 창 닫기)
+	onCommand     func(action string)
+	onVideoClosed func()
+
+	window *videoWindow
 }
 
 func newWebviewPlayer() *webviewPlayer {
-	return &webviewPlayer{}
+	p := &webviewPlayer{}
+	p.window = newVideoWindow(p.handleVideoEvent)
+	return p
 }
 
 func (p *webviewPlayer) setContext(ctx context.Context) {
 	p.mu.Lock()
 	p.ctx = ctx
+	p.mu.Unlock()
+}
+
+func (p *webviewPlayer) setVideoHandlers(onCommand func(string), onClosed func()) {
+	p.mu.Lock()
+	p.onCommand = onCommand
+	p.onVideoClosed = onClosed
 	p.mu.Unlock()
 }
 
@@ -50,14 +74,36 @@ func (p *webviewPlayer) SetEndedHandler(onEnded func(error)) {
 	p.mu.Unlock()
 }
 
-func (p *webviewPlayer) Play(streamURL string, volume int) error {
+func (p *webviewPlayer) Play(stream domain.Stream, volume int, startAt float64) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	// 이전 출력 정지
+	p.stopOutputLocked()
+
 	p.seq++
 	p.active = true
+	p.video = stream.VideoURL != ""
+	p.pos = startAt
 
-	return p.emitLocked(audioCommand{Action: "play", Seq: p.seq, URL: streamURL, Volume: volume})
+	cmd := audioCommand{
+		Action:   "play",
+		Seq:      p.seq,
+		URL:      stream.AudioURL,
+		VideoURL: stream.VideoURL,
+		Volume:   volume,
+		StartAt:  startAt,
+		Title:    stream.Title,
+	}
+
+	if p.video {
+		return p.window.send(cmd)
+	}
+
+	// 화면 보기를 끄면 영상 창도 닫음
+	p.window.close()
+
+	return p.emitLocked(cmd)
 }
 
 func (p *webviewPlayer) Stop() error {
@@ -68,9 +114,10 @@ func (p *webviewPlayer) Stop() error {
 		return nil
 	}
 
+	p.stopOutputLocked()
 	p.active = false
 
-	return p.emitLocked(audioCommand{Action: "stop", Seq: p.seq})
+	return nil
 }
 
 func (p *webviewPlayer) Pause() error {
@@ -85,7 +132,14 @@ func (p *webviewPlayer) SetVolume(volume int) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	return p.emitLocked(audioCommand{Action: "volume", Seq: p.seq, Volume: max(0, min(100, volume))})
+	return p.sendLocked(audioCommand{Action: "volume", Seq: p.seq, Volume: max(0, min(100, volume))})
+}
+
+func (p *webviewPlayer) Position() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.pos
 }
 
 func (p *webviewPlayer) control(action string) error {
@@ -96,10 +150,36 @@ func (p *webviewPlayer) control(action string) error {
 		return errNotPlaying
 	}
 
-	return p.emitLocked(audioCommand{Action: action, Seq: p.seq})
+	return p.sendLocked(audioCommand{Action: action, Seq: p.seq})
 }
 
-// ended JS 에서 곡 종료 / 재생 실패 통보
+// stopOutputLocked 현재 출력(메인 <audio> 또는 영상 창) 정지
+func (p *webviewPlayer) stopOutputLocked() {
+	if !p.active {
+		return
+	}
+
+	cmd := audioCommand{Action: "stop", Seq: p.seq}
+	if p.video {
+		if p.window.running() {
+			_ = p.window.send(cmd)
+		}
+		return
+	}
+
+	_ = p.emitLocked(cmd)
+}
+
+// sendLocked 현재 출력 대상으로 명령 전달
+func (p *webviewPlayer) sendLocked(cmd audioCommand) error {
+	if p.video && p.active {
+		return p.window.send(cmd)
+	}
+
+	return p.emitLocked(cmd)
+}
+
+// ended 곡 종료 / 재생 실패 통보
 func (p *webviewPlayer) ended(seq uint64, err error) {
 	p.mu.Lock()
 
@@ -117,12 +197,73 @@ func (p *webviewPlayer) ended(seq uint64, err error) {
 	}
 }
 
+// progress 재생 위치 통보
+func (p *webviewPlayer) progress(seq uint64, t float64) {
+	p.mu.Lock()
+	if p.active && seq == p.seq {
+		p.pos = t
+	}
+	p.mu.Unlock()
+}
+
 // current 현재 재생 중인 곡의 seq 인지
 func (p *webviewPlayer) current(seq uint64) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	return p.active && seq == p.seq
+}
+
+// closeVideo 앱 종료 시 영상 창 정리
+func (p *webviewPlayer) closeVideo() {
+	p.window.close()
+}
+
+// handleVideoEvent 영상 창 → 메인
+func (p *webviewPlayer) handleVideoEvent(ev videoEvent) {
+	switch ev.Event {
+	case "ended":
+		p.ended(ev.Seq, nil)
+
+	case "failed":
+		p.ended(ev.Seq, errors.New(ev.Message))
+
+	case "progress":
+		p.progress(ev.Seq, ev.Time)
+
+	case "paused":
+		p.mu.Lock()
+		cb := p.onCommand
+		ok := p.active && ev.Seq == p.seq
+		p.mu.Unlock()
+
+		if ok && cb != nil {
+			if ev.Paused {
+				cb("sync-paused")
+			} else {
+				cb("sync-playing")
+			}
+		}
+
+	case "command":
+		p.mu.Lock()
+		cb := p.onCommand
+		p.mu.Unlock()
+
+		if cb != nil {
+			cb(ev.Action)
+		}
+
+	case "closed":
+		p.mu.Lock()
+		wasVideo := p.video && p.active
+		cb := p.onVideoClosed
+		p.mu.Unlock()
+
+		if wasVideo && cb != nil {
+			cb()
+		}
+	}
 }
 
 func (p *webviewPlayer) emitLocked(cmd audioCommand) error {

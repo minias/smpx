@@ -19,29 +19,38 @@ func (f *fakeResolver) Title(_ context.Context, url string) (string, error) {
 	return "title:" + url, nil
 }
 
-func (f *fakeResolver) StreamURL(_ context.Context, url string) (string, error) {
+func (f *fakeResolver) Streams(_ context.Context, url string, video bool) (domain.Stream, error) {
 	if f.block != nil {
 		<-f.block
 	}
 	if f.err != nil {
-		return "", f.err
+		return domain.Stream{}, f.err
 	}
-	return "stream:" + url, nil
+	st := domain.Stream{AudioURL: "stream:" + url}
+	if video {
+		st.VideoURL = "video:" + url
+	}
+	return st, nil
 }
 
 type fakePlayer struct {
 	mu      sync.Mutex
 	played  []string
+	videos  []string
+	starts  []float64
+	pos     float64
 	stops   int
 	paused  bool
 	volume  int
 	onEnded func(error)
 }
 
-func (f *fakePlayer) Play(streamURL string, volume int) error {
+func (f *fakePlayer) Play(stream domain.Stream, volume int, startAt float64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.played = append(f.played, streamURL)
+	f.played = append(f.played, stream.AudioURL)
+	f.videos = append(f.videos, stream.VideoURL)
+	f.starts = append(f.starts, startAt)
 	f.volume = volume
 	f.paused = false
 	return nil
@@ -61,6 +70,8 @@ func (f *fakePlayer) SetVolume(volume int) error {
 	f.volume = volume
 	return nil
 }
+
+func (f *fakePlayer) Position() float64 { return f.pos }
 
 func (f *fakePlayer) SetEndedHandler(onEnded func(error)) {
 	f.onEnded = onEnded
@@ -293,5 +304,29 @@ func TestSyncPaused(t *testing.T) {
 	s.SyncPaused(false)
 	if s.State().State != domain.Playing {
 		t.Fatalf("state = %q, want playing", s.State().State)
+	}
+}
+
+func TestShowVideoResumesAtPosition(t *testing.T) {
+	s, audio, _, _ := newTestService(t, "a")
+
+	_ = s.SetShowVideo(true) // 정지 중에는 상태만 변경
+	if len(audio.played) != 0 || !s.State().ShowVideo {
+		t.Fatalf("played=%v showVideo=%v", audio.played, s.State().ShowVideo)
+	}
+
+	_ = s.Play(0)
+	if audio.videos[0] != "video:a" {
+		t.Fatalf("video url = %q", audio.videos[0])
+	}
+
+	audio.pos = 42.5
+	_ = s.SetShowVideo(false)
+
+	if len(audio.played) != 2 || audio.videos[1] != "" || audio.starts[1] != 42.5 {
+		t.Fatalf("videos=%v starts=%v", audio.videos, audio.starts)
+	}
+	if s.State().State != domain.Playing {
+		t.Fatalf("state = %q", s.State().State)
 	}
 }

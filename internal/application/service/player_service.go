@@ -160,6 +160,33 @@ func (s *PlayerService) RemoveTrack(index int) error {
 
 // Play 특정 트랙 재생 (범위 밖이면 0번)
 func (s *PlayerService) Play(index int) error {
+	return s.playAt(index, 0)
+}
+
+// SetShowVideo 화면 보기 전환 (재생 중이면 현재 위치부터 이어서 재생)
+func (s *PlayerService) SetShowVideo(on bool) error {
+	s.mu.Lock()
+
+	if s.state.ShowVideo == on {
+		s.mu.Unlock()
+		return nil
+	}
+
+	s.state.ShowVideo = on
+	resume := s.state.State == domain.Playing || s.state.State == domain.Paused
+	index := s.state.CurrentIndex
+	s.mu.Unlock()
+
+	s.emitState()
+
+	if !resume || index < 0 {
+		return nil
+	}
+
+	return s.playAt(index, s.player.Position())
+}
+
+func (s *PlayerService) playAt(index int, startAt float64) error {
 	s.mu.Lock()
 
 	if len(s.state.Playlist) == 0 {
@@ -174,6 +201,7 @@ func (s *PlayerService) Play(index int) error {
 	s.playSeq++
 	seq := s.playSeq
 	item := s.state.Playlist[index]
+	video := s.state.ShowVideo
 
 	s.state.CurrentIndex = index
 	s.state.State = domain.Loading
@@ -185,7 +213,7 @@ func (s *PlayerService) Play(index int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), ytdlpTimeout)
 	defer cancel()
 
-	streamURL, err := s.youtube.StreamURL(ctx, item.URL)
+	stream, err := s.youtube.Streams(ctx, item.URL, video)
 
 	s.mu.Lock()
 
@@ -196,7 +224,8 @@ func (s *PlayerService) Play(index int) error {
 	}
 
 	if err == nil {
-		err = s.player.Play(streamURL, s.state.Volume)
+		stream.Title = item.Title
+		err = s.player.Play(stream, s.state.Volume, startAt)
 	}
 
 	if err != nil {

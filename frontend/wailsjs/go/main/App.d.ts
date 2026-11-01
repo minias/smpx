@@ -11,6 +11,8 @@ export function AudioFailed(arg1:number,arg2:string):Promise<void>;
 
 export function AudioPaused(arg1:number,arg2:boolean):Promise<void>;
 
+export function AudioProgress(arg1:number,arg2:number):Promise<void>;
+
 export function CheckForUpdate():Promise<update.Info>;
 
 export function CycleLoopMode():Promise<string>;
@@ -28,6 +30,8 @@ export function PlayPause():Promise<void>;
 export function Previous():Promise<void>;
 
 export function RemoveTrack(arg1:number):Promise<void>;
+
+export function SetShowVideo(arg1:boolean):Promise<void>;
 
 export function SetVolume(arg1:number):Promise<void>;
 
